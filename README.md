@@ -1,6 +1,15 @@
-# Strogger
+# 📊 Strogger
 
-A modern, **structured logging** library built with functional programming principles, dependency injection, and duck-typing for maximum flexibility and extensibility.
+> 📊 A modern structured logging library with functional programming, duck-typing, and comprehensive third-party integrations
+
+[![npm version](https://img.shields.io/npm/v/strogger.svg?style=flat-square)](https://www.npmjs.com/package/strogger)
+[![npm downloads](https://img.shields.io/npm/dm/strogger.svg?style=flat-square)](https://www.npmjs.com/package/strogger)
+[![GitHub stars](https://img.shields.io/github/stars/TheLeePriest/strogger?style=flat-square)](https://github.com/TheLeePriest/strogger/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+
+Strogger is a modern, developer-friendly structured logging library built with functional programming principles, dependency injection, and duck-typing for maximum flexibility and extensibility.
 
 ## 🎯 **Core Focus: Structured Logging**
 
@@ -14,29 +23,35 @@ This library is built around the principle that **all logs should be structured 
 - **🤖 Machine-readable**: Perfect for log aggregation systems and monitoring tools
 - **📈 Scalable**: Efficient parsing and storage in modern logging systems
 
-## 🚀 Features
+## ✨ Features
 
-- **📊 Structured JSON Logging** (Core Focus): All logs automatically formatted as structured JSON with consistent schema
-- **🔄 Functional Programming**: Pure functions with dependency injection and duck-typing
-- **🚚 Multiple Transports**: Console, DataDog, Splunk, Elasticsearch, New Relic, CloudWatch, File, and custom transports
-- **🌍 Environment-aware**: Automatic configuration based on environment variables
-- **📝 TypeScript Support**: Full TypeScript support with comprehensive type definitions
-- **⚡ AWS Lambda Optimized**: Designed to work seamlessly in AWS Lambda environments
-- **🔧 Extensible**: Easy to add custom transports and formatters using duck-typing
-- **📈 Performance Monitoring**: Built-in performance tracking and metrics
-- **🛡️ Comprehensive Error Handling**: Clear, actionable error messages with solutions
-- **🔍 Advanced Features**: Log filtering, validation, redaction, sampling, rate limiting, enrichment, and batching
-- **🔐 Security**: Built-in support for forbidden keys filtering and redaction
+### 🚀 **Core Logging**
+- **📊 Structured JSON Logging** - All logs automatically formatted as structured JSON with consistent schema
+- **🔄 Functional Programming** - Pure functions with dependency injection and duck-typing
+- **🚚 Multiple Transports** - Console, DataDog, Splunk, Elasticsearch, New Relic, CloudWatch, File
+- **🌍 Environment-aware** - Automatic configuration based on environment variables
 
-## 📦 Installation
+### 🛠️ **Developer Experience**
+- **📝 TypeScript Support** - Full TypeScript support with comprehensive type definitions
+- **⚡ AWS Lambda Optimized** - Designed to work seamlessly in AWS Lambda environments
+- **🔧 Extensible** - Easy to add custom transports and formatters using duck-typing
+- **📈 Performance Monitoring** - Built-in performance tracking and metrics
+
+### 🔒 **Advanced Features**
+- **🛡️ Comprehensive Error Handling** - Clear, actionable error messages with solutions
+- **🔍 Advanced Features** - Log filtering, validation, redaction, sampling, rate limiting, enrichment, and batching
+- **🔐 Security** - Built-in support for forbidden keys filtering and redaction
+- **🔗 Correlation Tracking** - Distributed tracing support
+
+## 🚀 Quick Start
+
+### 1. Install Strogger
 
 ```bash
 npm install strogger
 ```
 
-## 🎯 Quick Start
-
-### Basic Usage
+### 2. Basic Usage
 
 ```typescript
 import { strogger } from 'strogger';
@@ -48,23 +63,7 @@ strogger.warn('Deprecated feature used');
 strogger.error('Something went wrong', { userId: '456' }, new Error('Database connection failed'));
 ```
 
-### Branded vs Conventional APIs
-
-Strogger provides both conventional and branded function names:
-
-```typescript
-// Conventional approach (recommended for most users)
-import { createLogger, createConsoleTransport } from 'strogger';
-
-// Branded approach (for brand consistency)
-import { createStrogger, createStroggerConsoleTransport } from 'strogger';
-
-// Both work identically:
-const logger = createLogger({...});
-const strogger = createStrogger({...});
-```
-
-### Functional Approach with Dependency Injection
+### 3. Functional Approach with Dependency Injection
 
 ```typescript
 import { 
@@ -74,15 +73,6 @@ import {
   getEnvironment,
   LogLevel 
 } from 'strogger';
-
-// Or using branded functions:
-// import { 
-//   createStrogger, 
-//   createStroggerConsoleTransport, 
-//   createJsonFormatter, 
-//   getEnvironment,
-//   LogLevel 
-// } from 'strogger';
 
 // Get environment configuration
 const env = getEnvironment();
@@ -109,28 +99,116 @@ const logger = createLogger({
 logger.info('Application started with functional approach');
 ```
 
-### With Context and Metadata
+## 📖 Usage Guide
+
+### 🎯 Installation Methods
+
+| Method | Install Command | Import Statement | Best For |
+|--------|----------------|------------------|----------|
+| **NPM** | `npm install strogger` | `import { strogger } from 'strogger'` | **Production projects** |
+| **Yarn** | `yarn add strogger` | `import { strogger } from 'strogger'` | Yarn-based projects |
+| **PNPM** | `pnpm add strogger` | `import { strogger } from 'strogger'` | PNPM-based projects |
+
+### 🔍 API Reference
+
+#### **Conventional vs Branded APIs**
+
+Strogger provides both conventional and branded function names:
 
 ```typescript
-import { strogger } from 'strogger';
+// Conventional approach (recommended for most users)
+import { createLogger, createConsoleTransport } from 'strogger';
 
-const context = {
-  requestId: 'req-123',
-  userId: 'user-456',
-  functionName: 'processPayment'
-};
+// Branded approach (for brand consistency)
+import { createStrogger, createStroggerConsoleTransport } from 'strogger';
 
-const metadata = {
-  orderId: 'order-789',
-  amount: 100.50,
-  currency: 'USD'
-};
-
-strogger.info('Payment processing started', context);
-strogger.debug('Validating payment details', context, metadata);
+// Both work identically:
+const logger = createLogger({...});
+const strogger = createStrogger({...});
 ```
 
-### Convenience Methods
+#### **Core Functions**
+
+```typescript
+// Logger creation
+createLogger(config)
+createStrogger(config)
+
+// Transport creation
+createConsoleTransport(options)
+createStroggerConsoleTransport(options)
+createCloudWatchTransport(options)
+createDataDogTransport(options)
+createSplunkTransport(options)
+createElasticsearchTransport(options)
+createNewRelicTransport(options)
+createFileTransport(options)
+
+// Formatter creation
+createJsonFormatter(options)
+
+// Environment utilities
+getEnvironment()
+getEnvironmentVariables()
+```
+
+#### **Logging Levels**
+
+```typescript
+import { LogLevel } from 'strogger';
+
+// Available levels
+LogLevel.DEBUG   // 0
+LogLevel.INFO    // 1
+LogLevel.WARN    // 2
+LogLevel.ERROR   // 3
+LogLevel.FATAL   // 4
+```
+
+### 📦 Transport Examples
+
+#### **Console Transport**
+
+```typescript
+import { createConsoleTransport, createJsonFormatter } from 'strogger';
+
+const formatter = createJsonFormatter();
+const transport = createConsoleTransport({ 
+  formatter, 
+  level: LogLevel.DEBUG,
+  useColors: true 
+});
+```
+
+#### **CloudWatch Transport**
+
+```typescript
+import { createCloudWatchTransport, createJsonFormatter } from 'strogger';
+
+const formatter = createJsonFormatter();
+const transport = createCloudWatchTransport({
+  formatter,
+  logGroupName: '/aws/lambda/my-function',
+  logStreamName: 'production',
+  region: 'us-east-1'
+});
+```
+
+#### **DataDog Transport**
+
+```typescript
+import { createDataDogTransport, createJsonFormatter } from 'strogger';
+
+const formatter = createJsonFormatter();
+const transport = createDataDogTransport({
+  formatter,
+  apiKey: process.env.DATADOG_API_KEY,
+  service: 'my-service',
+  source: 'nodejs'
+});
+```
+
+### 🎯 Convenience Methods
 
 ```typescript
 import { strogger } from 'strogger';
@@ -198,384 +276,151 @@ const customLogger = createLogger({
   config: {
     level: LogLevel.DEBUG,
     serviceName: 'my-service',
-    stage: 'dev',
-    enableStructuredLogging: true,
-    // Advanced features
-    samplingRate: 0.1, // Sample 10% of logs
-    rateLimit: {
-      maxLogsPerSecond: 100,
-      burstSize: 50
-    },
-    forbiddenKeys: ['password', 'apiKey', 'secret'],
-    forbiddenKeyAction: 'redact' // or 'skip'
+    stage: 'production',
+    enableStructuredLogging: true
   },
   transports: [transport],
   formatter,
-  env,
+  env
 });
 ```
 
-## 🔌 Third-Party Integrations
+## 🏷️ Third-Party Integrations
 
-### DataDog Integration
+Strogger provides built-in support for popular logging and monitoring services:
+
+### **AWS CloudWatch**
+- Automatic log group and stream management
+- Lambda-optimized with minimal cold start impact
+- Batch logging for cost efficiency
+
+### **DataDog**
+- Structured JSON logs with automatic parsing
+- Service and source tagging
+- Performance metrics integration
+
+### **Splunk**
+- HEC (HTTP Event Collector) support
+- Structured data with source types
+- Index management and routing
+
+### **Elasticsearch**
+- Direct indexing with bulk operations
+- Mapping templates for optimal search
+- Cluster health monitoring
+
+### **New Relic**
+- Distributed tracing integration
+- Custom attributes and metrics
+- Error tracking and alerting
+
+### **File Transport**
+- Rotating log files with compression
+- Size and time-based rotation
+- Structured JSON output
+
+## 🎯 Best Practices
+
+### **1. Use Structured Logging Consistently**
 
 ```typescript
-import { createDataDogTransport } from 'strogger';
-// Or: import { createStroggerDataDogTransport } from 'strogger';
-
-const dataDogTransport = createDataDogTransport({
-  level: LogLevel.INFO,
-  apiKey: process.env.DATADOG_API_KEY,
-  serviceName: 'my-service',
-  tags: ['env:prod', 'team:backend']
+// ✅ Good - Structured data
+strogger.info('User login successful', { 
+  userId: '123', 
+  method: 'oauth', 
+  provider: 'google' 
 });
 
-const logger = createLogger({
-  config: { serviceName: 'my-service' },
-  transports: [dataDogTransport],
-  formatter: createJsonFormatter(),
-  env: getEnvironment(),
-});
+// ❌ Avoid - Unstructured strings
+strogger.info('User 123 logged in via Google OAuth');
 ```
 
-### Splunk Integration
+### **2. Leverage Context for Correlation**
 
 ```typescript
-import { createSplunkTransport } from 'strogger';
-// Or: import { createStroggerSplunkTransport } from 'strogger';
-
-const splunkTransport = createSplunkTransport({
-  level: LogLevel.INFO,
-  hecUrl: process.env.SPLUNK_HEC_URL,
-  hecToken: process.env.SPLUNK_HEC_TOKEN,
-  source: 'my-service',
-  sourcetype: '_json'
-});
-
-const logger = createLogger({
-  config: { serviceName: 'my-service' },
-  transports: [splunkTransport],
-  formatter: createJsonFormatter(),
-  env: getEnvironment(),
-});
-```
-
-### Elasticsearch Integration
-
-```typescript
-import { createElasticsearchTransport } from 'strogger';
-// Or: import { createStroggerElasticsearchTransport } from 'strogger';
-
-const elasticsearchTransport = createElasticsearchTransport({
-  level: LogLevel.INFO,
-  url: process.env.ELASTICSEARCH_URL,
-  apiKey: process.env.ELASTICSEARCH_API_KEY,
-  index: 'logs',
-  indexPattern: 'logs-{YYYY.MM.DD}'
-});
-
-const logger = createLogger({
-  config: { serviceName: 'my-service' },
-  transports: [elasticsearchTransport],
-  formatter: createJsonFormatter(),
-  env: getEnvironment(),
-});
-```
-
-### New Relic Integration
-
-```typescript
-import { createNewRelicTransport } from 'strogger';
-// Or: import { createStroggerNewRelicTransport } from 'strogger';
-
-const newRelicTransport = createNewRelicTransport({
-  level: LogLevel.INFO,
-  apiKey: process.env.NEW_RELIC_LICENSE_KEY,
-  accountId: process.env.NEW_RELIC_ACCOUNT_ID,
-  serviceName: 'my-service'
-});
-
-const logger = createLogger({
-  config: { serviceName: 'my-service' },
-  transports: [newRelicTransport],
-  formatter: createJsonFormatter(),
-  env: getEnvironment(),
-});
-```
-
-## 🔧 Advanced Usage
-
-### Custom Transports with Duck-Typing
-
-```typescript
-import { createLogger, LogLevel } from 'strogger';
-
-// Any object with log/setLevel/getLevel methods works (duck-typing)
-const customTransport = {
-  log: (entry: any) => {
-    // Custom logging logic
-    console.log(`[CUSTOM] ${JSON.stringify(entry)}`);
-  },
-  setLevel: (level: LogLevel) => {
-    console.log(`Setting custom transport level to ${level}`);
-  },
-  getLevel: () => LogLevel.INFO,
+const context = {
+  requestId: 'req-123',
+  userId: 'user-456',
+  sessionId: 'sess-789'
 };
 
-const logger = createLogger({
-  config: { serviceName: 'service-with-custom-transport' },
-  transports: [customTransport], // Duck-typing in action
-  formatter: { format: (entry: any) => JSON.stringify(entry) },
-  env: getEnvironment(),
+strogger.info('Processing payment', context, { 
+  amount: 100.50, 
+  currency: 'USD' 
 });
 ```
 
-### Custom Formatters with Duck-Typing
+### **3. Use Appropriate Log Levels**
 
 ```typescript
-import { createLogger } from 'strogger';
+// DEBUG - Detailed information for debugging
+strogger.debug('Database query executed', { query: 'SELECT * FROM users' });
 
-// Any object with a 'format' method works (duck-typing)
-const simpleFormatter = {
-  format: (entry: any) => `${entry.timestamp} [${entry.level}] ${entry.message}`,
-};
+// INFO - General application flow
+strogger.info('User registration completed', { userId: '123' });
 
-const logger = createLogger({
-  config: { serviceName: 'simple-formatter-service' },
-  transports: [],
-  formatter: simpleFormatter, // Duck-typing in action
-  env: getEnvironment(),
-});
+// WARN - Potentially harmful situations
+strogger.warn('Deprecated API endpoint called', { endpoint: '/api/v1/users' });
+
+// ERROR - Error events that might still allow the application to continue
+strogger.error('Database connection failed', { retryCount: 3 });
+
+// FATAL - Very severe error events that will presumably lead to application failure
+strogger.fatal('Application cannot start due to missing configuration');
 ```
 
-### Performance Monitoring
+### **4. Implement Proper Error Handling**
 
 ```typescript
-import { createPerformanceMonitor } from 'strogger';
-
-const performanceMonitor = createPerformanceMonitor();
-
-// Timer-based monitoring
-const timer = performanceMonitor.startTimer('myFunction');
-// ... do work ...
-const metrics = timer({ userId: '123', operation: 'data-processing' });
-
-// Async function monitoring
-const result = await performanceMonitor.timeAsync(
-  'asyncOperation',
-  async () => {
-    // Your async function
-    return 'result';
-  },
-  { operation: 'async-example' }
-);
-
-// Sync function monitoring
-const syncResult = performanceMonitor.timeSync(
-  'syncOperation',
-  () => {
-    // Your sync function
-    return 'result';
-  },
-  { operation: 'sync-example' }
-);
-
-// Get performance metrics
-const summary = performanceMonitor.getMetricsSummary();
-const slowest = performanceMonitor.getSlowestExecution();
-const avgDuration = performanceMonitor.getAverageDuration('myFunction');
-```
-
-### Multiple Transports
-
-```typescript
-import { 
-  createLogger, 
-  createConsoleTransport,
-  createDataDogTransport,
-  createSplunkTransport,
-  getEnvironment 
-} from 'strogger';
-
-const env = getEnvironment();
-const formatter = createJsonFormatter();
-
-const logger = createLogger({
-  config: { serviceName: 'multi-transport-service' },
-  transports: [
-    createConsoleTransport({ formatter, level: LogLevel.DEBUG }), // Console for all levels
-    createDataDogTransport({ level: LogLevel.INFO }), // DataDog for INFO+
-    createSplunkTransport({ level: LogLevel.ERROR }), // Splunk for ERROR+
-  ],
-  formatter,
-  env,
-});
-```
-
-## 📊 Log Levels
-
-- **DEBUG (0)**: Detailed information for debugging
-- **INFO (1)**: General information about application flow
-- **WARN (2)**: Warning messages for potentially harmful situations
-- **ERROR (3)**: Error events that might still allow the application to continue
-- **FATAL (4)**: Severe errors that will prevent the application from running
-
-## 📝 Structured JSON Output Format
-
-**Every log entry is automatically formatted as structured JSON** with a consistent schema. This ensures all logs are machine-readable and easily parseable by logging systems.
-
-### **Standard Log Entry Schema**
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "level": "INFO",
-  "message": "Function processOrder started",
-  "stage": "dev",
-  "serviceName": "order-service",
-  "requestId": "req-123",
-  "functionName": "processOrder",
-  "correlationId": "corr-abc123",
-  "traceId": "trace-def456",
-  "instanceId": "inst-789",
-  "metadata": {
-    "orderId": "order-456",
-    "userId": "user-123"
-  }
-}
-```
-
-### **Error Log Entry Schema**
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "level": "ERROR",
-  "message": "Database connection failed",
-  "stage": "prod",
-  "serviceName": "payment-service",
-  "requestId": "req-789",
-  "error": {
-    "name": "ConnectionError",
-    "message": "Failed to connect to database",
-    "stack": "ConnectionError: Failed to connect..."
-  },
-  "context": {
-    "database": "primary",
-    "retryAttempts": 3
-  }
-}
-```
-
-### **Benefits of Structured JSON Logging**
-
-- **🔍 Consistent Schema**: All logs follow the same structure
-- **📊 Easy Parsing**: JSON format is universally supported
-- **🔗 Correlation**: Built-in correlation IDs for distributed tracing
-- **📈 Analytics**: Structured data enables powerful log analytics
-- **🤖 Automation**: Machine-readable format for automated processing
-
-## 🔄 Migration from Class-Based Logger
-
-If you're migrating from the class-based logger:
-
-### Before (Class-based)
-```typescript
-import { Logger } from 'strogger';
-
-const logger = new Logger({
-  config: { serviceName: 'my-service' },
-  transports: [new ConsoleTransport()],
-  formatter: new JsonFormatter(),
-});
-```
-
-### After (Functional)
-```typescript
-import { 
-  createLogger, 
-  createConsoleTransport, 
-  createJsonFormatter,
-  getEnvironment 
-} from 'strogger';
-
-const env = getEnvironment();
-const formatter = createJsonFormatter();
-const transport = createConsoleTransport({ formatter });
-
-const logger = createLogger({
-  config: { serviceName: 'my-service' },
-  transports: [transport],
-  formatter,
-  env,
-});
-```
-
-## 📚 API Reference
-
-### Core Functions
-
-- `createLogger(options)`: Creates a logger instance with dependency injection
-- `createConsoleTransport(options)`: Creates a console transport
-- `createJsonFormatter()`: Creates a JSON formatter
-- `getEnvironment(env?)`: Gets environment configuration
-- `createPerformanceMonitor(initialState?)`: Creates a performance monitor
-
-### Transport Functions
-
-- `createDataDogTransport(options)`: Creates a DataDog transport
-- `createSplunkTransport(options)`: Creates a Splunk transport
-- `createElasticsearchTransport(options)`: Creates an Elasticsearch transport
-- `createNewRelicTransport(options)`: Creates a New Relic transport
-
-### Duck-Typing Interfaces
-
-**Transport**: Any object with `log(entry)`, optional `setLevel(level)`, and optional `getLevel()` methods.
-
-**Formatter**: Any object with a `format(entry)` method.
-
-**Performance Monitor**: Returns an object with performance tracking methods.
-
-### Error Handling
-
-The logger provides comprehensive error handling with clear, actionable error messages:
-
-```typescript
-import { 
-  LoggerError, 
-  TransportError, 
-  ERROR_MESSAGES,
-  handleTransportError 
-} from '@cdk-insights/logger';
-
-// Custom error handling
 try {
-  const logger = createLogger({ /* config */ });
+  const result = await processPayment(paymentData);
+  strogger.info('Payment processed successfully', { 
+    paymentId: result.id, 
+    amount: paymentData.amount 
+  });
 } catch (error) {
-  if (error instanceof TransportError) {
-    console.error(`Transport ${error.transportName} failed:`, error.message);
-    console.error('Solution:', error.details?.solution);
-  }
+  strogger.error('Payment processing failed', { 
+    paymentId: paymentData.id, 
+    error: error.message 
+  }, error);
 }
 ```
-
-## 📖 Documentation
-
-- [Advanced Features Guide](./docs/advanced-features.md) - Log filtering, validation, redaction, hooks, sampling, rate limiting, enrichment, and batching
-- [Third-Party Integrations](./docs/third-party-integrations.md) - Detailed integration guides for DataDog, Splunk, Elasticsearch, New Relic, and custom transports
-- [Error Handling Guide](./docs/error-handling.md) - Comprehensive error handling with examples and best practices
-- [Log Rotation and File Management](./docs/log-rotation-and-file-management.md) - File-based logging with rotation and management
-- [CloudWatch Log Rotation](./docs/cloudwatch-log-rotation.md) - AWS CloudWatch integration with log rotation
-- [Release Workflow](./docs/release-workflow.md) - Automated release process using bumper-cli
 
 ## 🤝 Contributing
 
-This library follows functional programming principles:
-- Pure functions with explicit dependencies
-- Duck-typing for extensibility
-- Immutable data structures where possible
-- Composition over inheritance
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### **Development Setup**
+
+```bash
+# Clone the repository
+git clone https://github.com/TheLeePriest/strogger.git
+cd strogger
+
+# Install dependencies
+npm install
+
+# Run tests
+npm test
+
+# Run linting
+npm run lint
+
+# Build the project
+npm run build
+```
 
 ## 📄 License
 
-MIT License - see LICENSE file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔗 Links
+
+- **Documentation**: [GitHub README](https://github.com/TheLeePriest/strogger#readme)
+- **Issues**: [GitHub Issues](https://github.com/TheLeePriest/strogger/issues)
+- **NPM Package**: [strogger on NPM](https://www.npmjs.com/package/strogger)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+**Made with ❤️ by the Strogger Team** 

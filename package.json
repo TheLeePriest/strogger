@@ -1,12 +1,13 @@
 {
   "name": "strogger",
   "version": "1.0.0",
-  "description": "A structured logging library with functional programming, duck-typing, and comprehensive third-party integrations",
+  "description": "📊 A modern structured logging library with functional programming, duck-typing, and comprehensive third-party integrations",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist/**/*",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -31,14 +32,30 @@
     "datadog",
     "splunk",
     "elasticsearch",
-    "newrelic"
+    "newrelic",
+    "json-logging",
+    "log-aggregation",
+    "monitoring",
+    "observability",
+    "distributed-tracing",
+    "performance-monitoring",
+    "error-tracking",
+    "log-management",
+    "serverless",
+    "microservices",
+    "nodejs",
+    "javascript"
   ],
   "author": "Strogger Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/strogger/strogger.git"
+    "url": "https://github.com/TheLeePriest/strogger.git"
   },
+  "bugs": {
+    "url": "https://github.com/TheLeePriest/strogger/issues"
+  },
+  "homepage": "https://github.com/TheLeePriest/strogger#readme",
   "devDependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.840.0",
     "@biomejs/biome": "^1.9.4",
