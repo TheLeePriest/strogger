@@ -9,7 +9,7 @@ import {
   createSplunkTransport,
   getEnvironment,
 } from "../index";
-import type { LogEntry } from "../index";
+// import type { LogEntry } from "../index"; // Removed unused import
 
 // Example 1: DataDog Transport
 export const demonstrateDataDogTransport = () => {
