@@ -99,3 +99,13 @@ Thanks to Lee Priest for contributing to this release!
 
 Thanks to Lee Priest for contributing to this release!
 
+## [2.1.0] - 2025-07-01 (MINOR RELEASE)
+
+### ✨ Features
+
+- improve environment variable handling and documentation (f8476bf8)
+
+### 👥 Contributors
+
+Thanks to Lee Priest for contributing to this release!
+
