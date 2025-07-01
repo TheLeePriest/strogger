@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the `@cdk-insights/logger` library will be documented in this file.
+All notable changes to the `strogger` library will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Initial release of structured logging library
 - **Core structured JSON logging** - All logs output in structured JSON format for easy parsing and analysis
 - **Functional programming approach** with dependency injection and duck-typing
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Branded API functions** - `createStrogger()` and `createStrogger*Transport()` functions for brand consistency
 
 ### Features
+
 - **Structured JSON Logging**: Every log entry is automatically formatted as structured JSON with consistent schema
 - **Duck-Typing**: Any object with `log()`, `setLevel()`, and `getLevel()` methods can be a transport
 - **Dependency Injection**: Pure functions with explicit dependencies for easy testing and composition
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AWS Integration**: Optimized for AWS Lambda with CloudWatch log rotation and stream management
 
 ### Documentation
+
 - Comprehensive README with quick start guide
 - Advanced features documentation
 - Third-party integration guides
@@ -45,10 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2024-01-15
 
 ### Added
-- Initial release of `@cdk-insights/logger`
+
+- Initial release of `strogger`
 - **Structured JSON logging** as the core feature
 - Functional programming approach with dependency injection
 - Duck-typing for maximum extensibility
 - Multiple transport support
 - Advanced logging features
-- Comprehensive documentation and examples 
+- Comprehensive documentation and examples
