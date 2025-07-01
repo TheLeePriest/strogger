@@ -109,3 +109,13 @@ Thanks to Lee Priest for contributing to this release!
 
 Thanks to Lee Priest for contributing to this release!
 
+## [2.0.3] - 2025-07-01 (PATCH RELEASE)
+
+### 🐛 Bug Fixes
+
+- convert vitest config to CommonJS to resolve ES module compatibility issue (6c7f3d94)
+
+### 👥 Contributors
+
+Thanks to Lee Priest for contributing to this release!
+
