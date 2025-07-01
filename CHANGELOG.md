@@ -76,3 +76,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Thanks to Lee Priest for contributing to this release!
 
+## [2.1.0] - 2025-07-01 (MINOR RELEASE)
+
+### 🐛 Bug Fixes
+
+- remove unused LogEntry import to resolve TypeScript build error (4ff664f8)
+- **examples:** prevent top-level instantiation of third-party transports and loggers in examples\n\n- Only create transports/loggers inside functions\n- Only run examples if file is executed directly\n- Prevents errors on import when required env vars are missing (ee19da9e)
+- correct package name in changelog from @cdk-insights/logger to strogger (1a049ae6)
+
+### 🔨 Chores
+
+- release v2.0.0 (be01e447)
+- add bumper-cli as dev dependency (27f3f347)
+
+### ✨ Features
+
+- setup bumper-cli with git hooks and GitHub workflows (10c8de1c)
+- optimize package.json and README.md for better NPM discoverability (18c34216)
+- initial commit (4b531ab5)
+
+### 👥 Contributors
+
+Thanks to Lee Priest for contributing to this release!
+
