@@ -141,3 +141,5 @@ export { runBrandedAPIExamples } from "./examples/branded-api-example";
 // Legacy/utility exports
 export { shouldLog } from "./transports/base-transport";
 export type { CloudWatchConfig } from "./types";
+
+export { printLoggerConfig } from './logger';

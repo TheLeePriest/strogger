@@ -18,6 +18,10 @@ import type { LoggerEnvironment } from "./utils/environment";
 import { createLogFilter } from "./utils/sampling";
 
 const getLogLevelFromEnv = (env: LoggerEnvironment): LogLevel => {
+  if (!env || typeof env !== 'object') {
+    console.warn('[strogger] No environment provided, defaulting to DEBUG');
+    return LogLevel.DEBUG;
+  }
   const level = env.LOG_LEVEL?.toUpperCase();
   switch (level) {
     case "DEBUG":
@@ -30,7 +34,11 @@ const getLogLevelFromEnv = (env: LoggerEnvironment): LogLevel => {
       return LogLevel.ERROR;
     case "FATAL":
       return LogLevel.FATAL;
+    case undefined:
+      // No LOG_LEVEL set
+      return env.STAGE === "prod" ? LogLevel.INFO : LogLevel.DEBUG;
     default:
+      console.warn(`[strogger] Invalid LOG_LEVEL '${env.LOG_LEVEL}' provided. Defaulting to ${env.STAGE === "prod" ? "INFO" : "DEBUG"}.`);
       return env.STAGE === "prod" ? LogLevel.INFO : LogLevel.DEBUG;
   }
 };
@@ -352,3 +360,14 @@ export const strogger = createLogger({
 
 // Branded alias for createLogger
 export const createStrogger = createLogger;
+
+export const printLoggerConfig = (env: LoggerEnvironment) => {
+  const level = getLogLevelFromEnv(env);
+  console.log('--- Strogger Logger Configuration ---');
+  console.log('LOG_LEVEL:', env.LOG_LEVEL ?? '(default)');
+  console.log('STAGE:', env.STAGE ?? 'dev');
+  console.log('SERVICE_NAME:', env.SERVICE_NAME ?? '(none)');
+  console.log('ENABLE_STRUCTURED_LOGGING:', env.ENABLE_STRUCTURED_LOGGING ?? true);
+  console.log('Effective log level:', level);
+  console.log('--------------------------------------');
+};

@@ -433,3 +433,29 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Made with ❤️ by the Strogger Team**
+
+## 🌱 Environment Variables
+
+Strogger supports several environment variables for configuration. **All are optional**—sensible defaults are provided for a smooth developer experience.
+
+| Variable                   | Default   | Description                                      |
+|----------------------------|-----------|--------------------------------------------------|
+| `LOG_LEVEL`                | `DEBUG` (dev/test), `INFO` (prod) | Minimum log level (`DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`) |
+| `STAGE`                    | `dev`     | Environment stage (`dev`, `prod`, `test`)        |
+| `SERVICE_NAME`             | *(none)*  | Name of the service/application                  |
+| `ENABLE_STRUCTURED_LOGGING`| `true`    | Output logs as structured JSON (`true`/`false`)  |
+
+**You do not need to set any environment variables to use strogger.** Defaults are chosen for a smooth developer experience.
+
+### Quick Start: Environment Setup
+
+You can set environment variables in your shell or `.env` file:
+
+```bash
+export LOG_LEVEL=INFO
+export STAGE=prod
+export SERVICE_NAME=my-service
+export ENABLE_STRUCTURED_LOGGING=true
+```
+
+If you do not set any variables, strogger will use the defaults above.
