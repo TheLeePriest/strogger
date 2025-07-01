@@ -26,18 +26,21 @@ This library is built around the principle that **all logs should be structured 
 ## ✨ Features
 
 ### 🚀 **Core Logging**
+
 - **📊 Structured JSON Logging** - All logs automatically formatted as structured JSON with consistent schema
 - **🔄 Functional Programming** - Pure functions with dependency injection and duck-typing
 - **🚚 Multiple Transports** - Console, DataDog, Splunk, Elasticsearch, New Relic, CloudWatch, File
 - **🌍 Environment-aware** - Automatic configuration based on environment variables
 
 ### 🛠️ **Developer Experience**
+
 - **📝 TypeScript Support** - Full TypeScript support with comprehensive type definitions
 - **⚡ AWS Lambda Optimized** - Designed to work seamlessly in AWS Lambda environments
 - **🔧 Extensible** - Easy to add custom transports and formatters using duck-typing
 - **📈 Performance Monitoring** - Built-in performance tracking and metrics
 
 ### 🔒 **Advanced Features**
+
 - **🛡️ Comprehensive Error Handling** - Clear, actionable error messages with solutions
 - **🔍 Advanced Features** - Log filtering, validation, redaction, sampling, rate limiting, enrichment, and batching
 - **🔐 Security** - Built-in support for forbidden keys filtering and redaction
@@ -290,31 +293,37 @@ const customLogger = createLogger({
 Strogger provides built-in support for popular logging and monitoring services:
 
 ### **AWS CloudWatch**
+
 - Automatic log group and stream management
 - Lambda-optimized with minimal cold start impact
 - Batch logging for cost efficiency
 
 ### **DataDog**
+
 - Structured JSON logs with automatic parsing
 - Service and source tagging
 - Performance metrics integration
 
 ### **Splunk**
+
 - HEC (HTTP Event Collector) support
 - Structured data with source types
 - Index management and routing
 
 ### **Elasticsearch**
+
 - Direct indexing with bulk operations
 - Mapping templates for optimal search
 - Cluster health monitoring
 
 ### **New Relic**
+
 - Distributed tracing integration
 - Custom attributes and metrics
 - Error tracking and alerting
 
 ### **File Transport**
+
 - Rotating log files with compression
 - Size and time-based rotation
 - Structured JSON output
@@ -423,4 +432,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Made with ❤️ by the Strogger Team** 
+**Made with ❤️ by the Strogger Team**

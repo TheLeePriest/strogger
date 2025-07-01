@@ -18,7 +18,14 @@
     "release": "bumper release",
     "bump": "bumper bump",
     "changelog": "bumper changelog",
-    "commit": "bumper commit"
+    "commit": "bumper commit",
+    "validate:commits": "./node_modules/.bin/bumper validate",
+    "changelog:preview": "./node_modules/.bin/bumper preview",
+    "changelog:generate": "./node_modules/.bin/bumper generate",
+    "release:patch": "./node_modules/.bin/bumper release patch",
+    "release:minor": "./node_modules/.bin/bumper release minor",
+    "release:major": "./node_modules/.bin/bumper release major",
+    "release:dry-run": "./node_modules/.bin/bumper release patch --dry-run"
   },
   "keywords": [
     "logging",
@@ -59,9 +66,11 @@
   "devDependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.840.0",
     "@biomejs/biome": "^1.9.4",
+    "@commitlint/cli": "^19.8.1",
     "@types/node": "^22.15.21",
     "@vitest/coverage-v8": "^3.2.4",
     "bumper-cli": "^1.5.8",
+    "husky": "^9.1.7",
     "typescript": "^5.8.3",
     "vitest": "^3.1.4"
   },
