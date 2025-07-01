@@ -56,3 +56,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multiple transport support
 - Advanced logging features
 - Comprehensive documentation and examples
+## [1.1.0] - 2025-07-01 (MINOR RELEASE)
+
+### ✨ Features
+
+- setup bumper-cli with git hooks and GitHub workflows (10c8de1c)
+- optimize package.json and README.md for better NPM discoverability (18c34216)
+- initial commit (4b531ab5)
+
+### 🐛 Bug Fixes
+
+- correct package name in changelog from @cdk-insights/logger to strogger (1a049ae6)
+
+### 🔨 Chores
+
+- add bumper-cli as dev dependency (27f3f347)
+
+### 👥 Contributors
+
+Thanks to Lee Priest for contributing to this release!
+
