@@ -1,7 +1,7 @@
 {
   "name": "strogger",
   "version": "1.0.0",
-      "description": "A structured logging library with functional programming, duck-typing, and comprehensive third-party integrations",
+  "description": "A structured logging library with functional programming, duck-typing, and comprehensive third-party integrations",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
