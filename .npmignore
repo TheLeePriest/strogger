@@ -1,0 +1,14 @@
+test/
+coverage/
+docs/
+.vscode/
+.DS_Store
+*.log
+*.ts
+src/
+.gitignore
+biome.json
+vitest.config.ts
+tsconfig.json
+*.tsbuildinfo
+.idea/ 

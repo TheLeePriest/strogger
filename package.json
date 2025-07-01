@@ -1,0 +1,71 @@
+{
+  "name": "strogger",
+  "version": "1.0.0",
+      "description": "A structured logging library with functional programming, duck-typing, and comprehensive third-party integrations",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "prepublishOnly": "npm run build",
+    "release": "bumper release",
+    "bump": "bumper bump",
+    "changelog": "bumper changelog",
+    "commit": "bumper commit"
+  },
+  "keywords": [
+    "logging",
+    "structured-logging",
+    "strogger",
+    "typescript",
+    "functional-programming",
+    "aws",
+    "lambda",
+    "cloudwatch",
+    "datadog",
+    "splunk",
+    "elasticsearch",
+    "newrelic"
+  ],
+  "author": "Strogger Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strogger/strogger.git"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.840.0",
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.15.21",
+    "@vitest/coverage-v8": "^3.2.4",
+    "bumper-cli": "^1.5.8",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bumper": {
+    "changelog": {
+      "path": "CHANGELOG.md",
+      "format": "markdown"
+    },
+    "commit": {
+      "message": "chore: release v{version}",
+      "body": "Structured logging library with functional programming, duck-typing, and comprehensive third-party integrations.\n\n- Structured JSON logging for all outputs\n- Multiple transport support (Console, DataDog, Splunk, Elasticsearch, New Relic, CloudWatch)\n- Advanced features: filtering, validation, redaction, sampling, rate limiting\n- Performance monitoring and correlation tracking\n- Comprehensive error handling with actionable messages\n- AWS Lambda optimized\n- TypeScript-first with strict typing"
+    },
+    "tag": {
+      "message": "v{version}",
+      "body": "Structured logging library with functional programming, duck-typing, and comprehensive third-party integrations."
+    }
+  }
+}
