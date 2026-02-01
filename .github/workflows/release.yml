@@ -103,7 +103,7 @@ jobs:
     environment: ${{ github.event.inputs.release_type == 'beta' && '' || 'production' }}
     permissions:
       contents: write
-      packages: write
+      id-token: write  # Required for NPM provenance / OIDC trusted publishing
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -148,9 +148,7 @@ jobs:
           echo "📦 Releasing version ${{ needs.test-and-build.outputs.version }}"
 
       - name: Publish to NPM
-        run: npm publish --tag ${{ steps.release_type.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --tag ${{ steps.release_type.outputs.tag }} --provenance --access public
 
       - name: Create Git tag
         id: create_tag
