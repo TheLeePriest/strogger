@@ -56,15 +56,42 @@ const shouldLog = (level: LogLevel, minLevel: LogLevel): boolean => {
 
 /**
  * Serialize an Error object to a plain object for JSON logging.
+ * Extracts standard and common custom error properties for structured logging.
  */
 const serializeError = (error: Error): SerializedError => {
   const serialized: SerializedError = {
     name: error.name,
     message: error.message,
   };
+
   if (error.stack !== undefined) {
     serialized.stack = error.stack;
   }
+
+  // Extract common error properties
+  const errorWithCode = error as Error & {
+    code?: string | number;
+    statusCode?: number;
+    status?: number;
+    cause?: Error;
+  };
+
+  if (errorWithCode.code !== undefined) {
+    serialized.code = errorWithCode.code;
+  }
+
+  // Support both statusCode and status (common in HTTP libraries)
+  if (errorWithCode.statusCode !== undefined) {
+    serialized.statusCode = errorWithCode.statusCode;
+  } else if (errorWithCode.status !== undefined) {
+    serialized.statusCode = errorWithCode.status;
+  }
+
+  // Recursively serialize the cause chain (ES2022 Error.cause)
+  if (errorWithCode.cause instanceof Error) {
+    serialized.cause = serializeError(errorWithCode.cause);
+  }
+
   return serialized;
 };
 

@@ -1,12 +1,46 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import type { LogContext } from "../types";
 
 /**
- * AsyncLocalStorage instance for automatic context propagation.
- * This allows context to flow automatically through async call chains
- * without manually passing it to each log call.
+ * Feature detection for AsyncLocalStorage.
+ * Falls back to a simple context holder for environments without AsyncLocalStorage.
  */
-const asyncLocalStorage = new AsyncLocalStorage<LogContext>();
+let asyncLocalStorage: {
+  getStore: () => LogContext | undefined;
+  run: <T>(store: LogContext, fn: () => T) => T;
+};
+
+let isAsyncLocalStorageAvailable = false;
+
+try {
+  // Dynamic import to support environments without async_hooks
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const asyncHooks = require("node:async_hooks");
+  const AsyncLocalStorageClass = asyncHooks.AsyncLocalStorage;
+  asyncLocalStorage = new AsyncLocalStorageClass();
+  isAsyncLocalStorageAvailable = true;
+} catch {
+  // Fallback for browsers or environments without async_hooks
+  let fallbackContext: LogContext = {};
+
+  asyncLocalStorage = {
+    getStore: () => fallbackContext,
+    run: <T>(store: LogContext, fn: () => T): T => {
+      const previousContext = fallbackContext;
+      fallbackContext = store;
+      try {
+        return fn();
+      } finally {
+        fallbackContext = previousContext;
+      }
+    },
+  };
+}
+
+/**
+ * Check if AsyncLocalStorage is available.
+ * When false, context propagation works but is not async-safe.
+ */
+export const hasAsyncLocalStorage = (): boolean => isAsyncLocalStorageAvailable;
 
 /**
  * Get the current context from AsyncLocalStorage.

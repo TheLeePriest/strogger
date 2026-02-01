@@ -33,7 +33,35 @@ export {
   setContext,
   generateRequestContext,
   withRequestContext,
+  hasAsyncLocalStorage,
 } from "./utils/context";
+
+// ============================================================================
+// MIDDLEWARE - Express/Fastify/Koa request logging
+// ============================================================================
+
+export {
+  createRequestLogger,
+  createTimingMiddleware,
+  attachLogger,
+} from "./middleware";
+export type {
+  RequestLoggingOptions,
+  TimingMiddlewareOptions,
+  AttachLoggerOptions,
+} from "./middleware";
+
+// ============================================================================
+// REDACTION - Sensitive data protection
+// ============================================================================
+
+export {
+  createRedactor,
+  defaultRedactor,
+  DEFAULT_SENSITIVE_FIELDS,
+  DEFAULT_REDACTION_PATTERNS,
+} from "./utils/redaction";
+export type { RedactionOptions } from "./utils/redaction";
 
 // ============================================================================
 // FORMATTERS

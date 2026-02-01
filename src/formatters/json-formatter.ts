@@ -70,7 +70,12 @@ export const createJsonFormatter = (): Formatter => {
           error: {
             name: entry.error.name,
             message: entry.error.message,
-            stack: entry.error.stack,
+            ...(entry.error.stack !== undefined && { stack: entry.error.stack }),
+            ...(entry.error.code !== undefined && { code: entry.error.code }),
+            ...(entry.error.statusCode !== undefined && {
+              statusCode: entry.error.statusCode,
+            }),
+            ...(entry.error.cause !== undefined && { cause: entry.error.cause }),
           },
         }),
         ...(entry.metadata && { metadata: entry.metadata }),

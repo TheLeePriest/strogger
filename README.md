@@ -76,6 +76,31 @@ app.get('/orders/:id', async (req, res) => {
 
 Every log from `req.log` automatically includes `requestId`, `userId`, and `path` - no need to pass them to each call.
 
+### Express/Fastify Middleware
+
+For even easier setup, use the built-in middleware:
+
+```typescript
+import { logger, createRequestLogger, attachLogger } from 'strogger';
+
+const log = logger({ serviceName: 'api' });
+
+// Option 1: Full request logging with timing
+app.use(createRequestLogger({
+  logger: log,
+  timing: true,
+  skip: (req) => req.path === '/health',
+  getContext: (req) => ({ userId: req.user?.id }),
+}));
+
+// Option 2: Just attach a logger to each request
+app.use(attachLogger({
+  logger: log,
+  property: 'log',
+  getContext: (req) => ({ userId: req.user?.id }),
+}));
+```
+
 ## Automatic Context Propagation
 
 For complex async flows, use `runWithContext` to automatically propagate context:
@@ -100,6 +125,28 @@ async function step1() {
   log.info('Processing step 1');   // Still has all context!
 }
 ```
+
+## Sensitive Data Redaction
+
+Automatically redact sensitive data from logs:
+
+```typescript
+import { logger, createLogger, createRedactor } from 'strogger';
+
+const log = createLogger({
+  config: {
+    serviceName: 'secure-api',
+    redact: createRedactor(), // Uses sensible defaults
+  },
+});
+
+// Sensitive data is automatically redacted:
+log.info('User email: user@example.com');        // Logs: "User email: [EMAIL]"
+log.info('Login', { password: 'secret123' });    // password becomes "[REDACTED]"
+log.info('Token: Bearer eyJhbGci...');           // Logs: "Token: Bearer [REDACTED]"
+```
+
+The default redactor handles: emails, credit cards, SSNs, API keys, Bearer/Basic tokens, JWTs, AWS keys, and password/secret fields.
 
 ## Log Levels
 
@@ -129,7 +176,7 @@ const log = logger({ level: LogLevel.DEBUG });
 ### Simple (recommended)
 
 ```typescript
-import { logger } from 'strogger';
+import { logger, LogLevel } from 'strogger';
 
 const log = logger({
   serviceName: 'my-app',     // Identifies your service
@@ -156,6 +203,7 @@ import {
   createLogger,
   createConsoleTransport,
   createJsonFormatter,
+  createRedactor,
   LogLevel,
 } from 'strogger';
 
@@ -163,6 +211,8 @@ const log = createLogger({
   config: {
     serviceName: 'my-app',
     level: LogLevel.DEBUG,
+    redact: createRedactor(),
+    samplingRate: 0.1, // Sample 10% of logs
   },
   transports: [
     createConsoleTransport({
@@ -281,15 +331,39 @@ log.error('Payment failed', { orderId }, error);   // Errors that need attention
 log.fatal('Database connection lost');             // Critical failures
 ```
 
+## Platform Compatibility
+
+### Node.js (Full Support)
+
+Strogger is designed for Node.js 18+ and uses `AsyncLocalStorage` for automatic context propagation through async operations.
+
+### Browser/Edge (Limited Support)
+
+When `AsyncLocalStorage` is not available (browsers, some edge runtimes), Strogger gracefully falls back to a synchronous context store. This means:
+
+- All core logging features work normally
+- `child()` loggers work as expected
+- `runWithContext()` works for synchronous code
+- **Limitation**: Context may not propagate correctly through some async patterns
+
+To check availability:
+
+```typescript
+import { hasAsyncLocalStorage } from 'strogger';
+
+if (!hasAsyncLocalStorage()) {
+  console.warn('Context propagation is sync-only in this environment');
+}
+```
+
 ## API Reference
 
-See the [full documentation](docs/) for detailed API reference and advanced features like:
+See the [full documentation](docs/api-reference.md) for detailed API reference and advanced features:
 
-- Sampling and rate limiting
-- Log redaction
-- Custom formatters
-- Batching
-- Performance monitoring
+- [API Reference](docs/api-reference.md) - Complete function and type documentation
+- [Advanced Features](docs/advanced-features.md) - Sampling, rate limiting, batching, hooks
+- [Error Handling](docs/error-handling.md) - Error handling strategies
+- [Third-Party Integrations](docs/third-party-integrations.md) - CloudWatch, DataDog, Splunk, etc.
 
 ## License
 

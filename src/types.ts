@@ -11,9 +11,18 @@ export enum LogLevel {
  * Unlike the Error class, this is a plain object safe for JSON serialization.
  */
 export interface SerializedError {
+  /** Error name/type (e.g., "TypeError", "ValidationError") */
   name: string;
+  /** Error message */
   message: string;
+  /** Stack trace if available */
   stack?: string;
+  /** Error code if available (e.g., "ENOENT", "ERR_HTTP_INVALID_STATUS_CODE") */
+  code?: string | number;
+  /** HTTP status code if this is an HTTP error */
+  statusCode?: number;
+  /** Cause of the error if available (from Error.cause) */
+  cause?: SerializedError;
 }
 
 /**
