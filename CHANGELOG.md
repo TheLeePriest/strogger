@@ -5,6 +5,77 @@ All notable changes to the `strogger` library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-02-01
+
+### Breaking Changes
+
+- **Removed branded exports**: `createStrogger`, `createStroggerConsoleTransport`, and other branded aliases have been removed. Use `createLogger` and `createConsoleTransport` instead.
+- **Simplified API**: The `formatter` and `env` parameters in `createLogger` are now optional with sensible defaults.
+- **Correlation IDs are now per-request**: Correlation IDs are generated fresh for each log unless you use `child()` or `runWithContext()` to share them.
+
+### Added
+
+- **`logger()` function**: New simplified logger creation - `logger({ serviceName: 'my-app' })` just works with sensible defaults.
+- **Child loggers**: `logger.child({ requestId, userId })` creates a scoped logger that includes context in all logs.
+- **AsyncLocalStorage context**: `runWithContext()` and `runWithContextAsync()` for automatic context propagation through async calls.
+- **Pretty printing**: `createPrettyFormatter()` for human-readable colored output in development.
+- **Context utilities**: `getContext()`, `setContext()`, `generateRequestContext()`, `withRequestContext()` for request tracing.
+- **`Logger` interface**: Proper TypeScript interface for the logger return type.
+- **`SerializedError` type**: Proper typing for serialized errors in logs.
+- **`SimpleLoggerOptions`**: Simplified options type for the new `logger()` function.
+- **`shutdown()` method**: Gracefully shutdown the logger, flushing all pending logs.
+- **`onError` config option**: Custom error handler for transport failures.
+
+### Fixed
+
+- **Memory leak in performance monitor**: Added `maxEntriesPerFunction` limit and TTL-based eviction.
+- **Batch retry reorders logs**: Fixed retry queue to maintain log order.
+- **CloudWatch infinite recursion**: Added retry limit for sequence token errors.
+- **CloudWatch client creation**: Client is now reused instead of created per request.
+- **Hardcoded CloudWatch log group**: Now throws an error if not provided instead of using a placeholder.
+
+### Changed
+
+- **Auto-detection of pretty vs JSON**: Uses pretty printing in development (`STAGE !== 'prod'`), JSON in production.
+- **Simplified README**: Focused on common use cases with clear examples for request tracing.
+- **GitHub Actions workflow**: Now triggers on push to main with version change detection.
+
+### Removed
+
+- `createStrogger` (use `createLogger`)
+- `createStroggerConsoleTransport` (use `createConsoleTransport`)
+- `createStroggerDataDogTransport` (use `createDataDogTransport`)
+- `createStroggerSplunkTransport` (use `createSplunkTransport`)
+- `createStroggerElasticsearchTransport` (use `createElasticsearchTransport`)
+- `createStroggerNewRelicTransport` (use `createNewRelicTransport`)
+- `createStroggerCloudWatchTransport` (use `createCloudWatchTransport`)
+- Example exports from public API (moved to internal)
+
+## [2.0.3] - 2025-01-15
+
+### Fixed
+
+- Convert vitest config to CommonJS to resolve ES module compatibility issue
+
+## [2.0.2] - 2025-01-14
+
+### Changed
+
+- Improve environment variable handling and documentation
+
+## [2.0.1] - 2025-01-13
+
+### Fixed
+
+- TypeScript build error fixes
+
+## [2.0.0] - 2025-01-12
+
+### Added
+
+- Bumper-cli integration for version management
+- GitHub Actions workflow for automated releases
+
 ## [Unreleased]
 
 ### Added
@@ -22,28 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Environment-aware configuration** with automatic setup based on environment variables
 - **Security features** with forbidden keys filtering and redaction
 - **Extensible architecture** - Easy to add custom transports and formatters using duck-typing
-- **Branded API functions** - `createStrogger()` and `createStrogger*Transport()` functions for brand consistency
-
-### Features
-
-- **Structured JSON Logging**: Every log entry is automatically formatted as structured JSON with consistent schema
-- **Duck-Typing**: Any object with `log()`, `setLevel()`, and `getLevel()` methods can be a transport
-- **Dependency Injection**: Pure functions with explicit dependencies for easy testing and composition
-- **Third-Party Integrations**: Built-in transports for popular logging services with batching and error handling
-- **Performance Monitoring**: Built-in performance tracking with timing, metrics, and correlation IDs
-- **Advanced Log Management**: Filtering, validation, redaction, sampling, rate limiting, and enrichment
-- **Error Handling**: Comprehensive error handling with detailed error messages and solutions
-- **AWS Integration**: Optimized for AWS Lambda with CloudWatch log rotation and stream management
-
-### Documentation
-
-- Comprehensive README with quick start guide
-- Advanced features documentation
-- Third-party integration guides
-- Error handling guide
-- Log rotation and file management documentation
-- CloudWatch integration guide
-- Multiple usage examples and best practices
 
 ## [1.0.0] - 2024-01-15
 

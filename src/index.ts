@@ -1,22 +1,71 @@
-// Core logger functionality
-export { createLogger, createStrogger, strogger } from "./logger";
-export { LogLevel } from "./types";
+// ============================================================================
+// CORE API - What most users need
+// ============================================================================
+
+// Main logger creation
+export { createLogger, logger, strogger } from "./logger";
+export type { CreateLoggerOptions } from "./logger";
+
+// Log levels
+export { LogLevel, parseLogLevel, logLevelToString } from "./types";
+
+// Core types
 export type {
+  Logger,
   LogEntry,
   LogContext,
-  LogLevel as LogLevelType,
   LoggerConfig,
-  LoggerOptions,
+  SimpleLoggerOptions,
   Transport,
   Formatter,
+  SerializedError,
+  TransportErrorHandler,
 } from "./types";
 
-// Formatters
-export { createJsonFormatter } from "./formatters/json-formatter";
+// ============================================================================
+// CONTEXT & TRACING - For request tracing
+// ============================================================================
 
-// Transports
+export {
+  runWithContext,
+  runWithContextAsync,
+  getContext,
+  setContext,
+  generateRequestContext,
+  withRequestContext,
+} from "./utils/context";
+
+// ============================================================================
+// FORMATTERS
+// ============================================================================
+
+export {
+  createJsonFormatter,
+  createPrettyFormatter,
+} from "./formatters/json-formatter";
+export type { PrettyFormatterOptions } from "./formatters/json-formatter";
+
+// ============================================================================
+// TRANSPORTS
+// ============================================================================
+
+// Console (included by default)
 export { createConsoleTransport } from "./transports/console-transport";
 export type { ConsoleTransportOptions } from "./transports/console-transport";
+
+// File
+export { createFileTransport } from "./transports/file-transport";
+export type {
+  FileTransportOptions,
+  FileTransportState,
+} from "./transports/file-transport";
+
+// Cloud providers
+export { createCloudWatchTransport } from "./transports/cloudwatch-transport";
+export type {
+  CloudWatchTransportOptions,
+  CloudWatchTransportState,
+} from "./transports/cloudwatch-transport";
 
 export { createDataDogTransport } from "./transports/datadog-transport";
 export type { DataDogTransportOptions } from "./transports/datadog-transport";
@@ -30,35 +79,13 @@ export type { ElasticsearchTransportOptions } from "./transports/elasticsearch-t
 export { createNewRelicTransport } from "./transports/newrelic-transport";
 export type { NewRelicTransportOptions } from "./transports/newrelic-transport";
 
-export { createFileTransport } from "./transports/file-transport";
-export type {
-  FileTransportOptions,
-  FileTransportState,
-} from "./transports/file-transport";
+// ============================================================================
+// ADVANCED FEATURES - For power users
+// ============================================================================
 
-export { createCloudWatchTransport } from "./transports/cloudwatch-transport";
-export type {
-  CloudWatchTransportOptions,
-  CloudWatchTransportState,
-} from "./transports/cloudwatch-transport";
-
-// Branded transport aliases
-export { createConsoleTransport as createStroggerConsoleTransport } from "./transports/console-transport";
-export { createDataDogTransport as createStroggerDataDogTransport } from "./transports/datadog-transport";
-export { createSplunkTransport as createStroggerSplunkTransport } from "./transports/splunk-transport";
-export { createElasticsearchTransport as createStroggerElasticsearchTransport } from "./transports/elasticsearch-transport";
-export { createNewRelicTransport as createStroggerNewRelicTransport } from "./transports/newrelic-transport";
-export { createCloudWatchTransport as createStroggerCloudWatchTransport } from "./transports/cloudwatch-transport";
-
-// Utilities
+// Environment utilities
 export { getEnvironment } from "./utils/environment";
 export type { LoggerEnvironment } from "./utils/environment";
-
-export { createPerformanceMonitor } from "./utils/performance";
-export type {
-  PerformanceMetrics,
-  PerformanceMonitorState,
-} from "./utils/performance";
 
 // Error handling
 export {
@@ -69,19 +96,39 @@ export {
   ERROR_MESSAGES,
   createDetailedError,
   handleTransportError,
-  validateEnvironmentVariable,
-  validateTransportConfig,
 } from "./utils/errors";
 
-// Advanced features
+// Sampling & rate limiting
 export {
   createLogFilter,
   createRateLimiter,
   createSampler,
 } from "./utils/sampling";
+export type { RateLimiterState, SamplingState } from "./utils/sampling";
 
+// Batching
+export { createBatchedTransport, createBatchedLogger } from "./utils/batching";
+export type {
+  BatchConfig,
+  BatchState,
+  BatchedTransport,
+  BatchStats,
+} from "./utils/batching";
+
+// Performance monitoring
+export { createPerformanceMonitor } from "./utils/performance";
+export type {
+  PerformanceMetrics,
+  PerformanceMonitorConfig,
+  PerformanceMonitorState,
+} from "./utils/performance";
+
+// ============================================================================
+// INTERNAL - Exported for advanced customization only
+// ============================================================================
+
+// Enrichment (usually not needed - context API is simpler)
 export {
-  createDefaultEnrichmentMiddleware,
   createEnrichmentMiddleware,
   createCorrelationEnricher,
   createSessionEnricher,
@@ -93,53 +140,13 @@ export {
   generateSpanId,
   generateLoggerInstanceId,
 } from "./utils/enrichment";
+export type { EnrichmentContext, Enricher } from "./utils/enrichment";
 
-export {
-  createBatchedTransport,
-  createBatchedLogger,
-} from "./utils/batching";
-
-// Advanced feature types
-export type {
-  RateLimiterState,
-  SamplingState,
-} from "./utils/sampling";
-
-export type {
-  EnrichmentContext,
-  Enricher,
-} from "./utils/enrichment";
-
-export type {
-  BatchConfig,
-  BatchState,
-  BatchedTransport,
-  BatchStats,
-} from "./utils/batching";
-
-// Example implementations (for reference and learning)
-export { createFileTransportExample } from "./examples/file-transport-example";
-export { createCloudWatchTransportExample } from "./examples/cloudwatch-transport-example";
-
-// New production transport usage examples
-export { runFileTransportExamples } from "./examples/file-transport-usage";
-export { runCloudWatchTransportExamples } from "./examples/cloudwatch-transport-usage";
-export {
-  demonstrateAutomaticInstanceId,
-  demonstrateCustomInstanceId,
-  demonstrateMultipleInstances,
-  demonstrateInstanceIdInContexts,
-  demonstrateManualGeneration,
-} from "./examples/logger-instance-id-example";
-
-// Structured logging demo (core focus)
-export { runStructuredLoggingDemo } from "./examples/structured-logging-demo";
-
-// Branded API demo
-export { runBrandedAPIExamples } from "./examples/branded-api-example";
-
-// Legacy/utility exports
+// Base transport utility
 export { shouldLog } from "./transports/base-transport";
-export type { CloudWatchConfig } from "./types";
 
-export { printLoggerConfig } from './logger';
+// Config printer utility
+export { printLoggerConfig } from "./logger";
+
+// Legacy type export
+export type { CloudWatchConfig } from "./types";

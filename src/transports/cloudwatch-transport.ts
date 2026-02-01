@@ -11,14 +11,18 @@ import { shouldLog } from "./base-transport";
 export interface CloudWatchTransportOptions {
   formatter?: Formatter;
   level?: LogLevel;
+  /** Required: CloudWatch log group name. Can also be set via CLOUDWATCH_LOG_GROUP env var. */
   logGroupName?: string;
   logStreamName?: string;
+  /** AWS region. Can also be set via AWS_REGION env var. Default: us-east-1 */
   region?: string;
   maxStreamSize?: number; // in bytes (CloudWatch limit: 50MB)
   maxStreamAge?: number; // in milliseconds (CloudWatch limit: 24 hours)
   batchSize?: number;
   flushInterval?: number;
   timeout?: number;
+  /** Maximum number of retries for sequence token errors. Default: 3 */
+  maxRetries?: number;
 }
 
 export interface CloudWatchTransportState {
@@ -29,6 +33,8 @@ export interface CloudWatchTransportState {
   batch: LogEntry[];
   flushTimer?: ReturnType<typeof setInterval>;
 }
+
+const DEFAULT_MAX_RETRIES = 3;
 
 export const createCloudWatchTransport = (
   options: CloudWatchTransportOptions = {},
@@ -41,9 +47,7 @@ export const createCloudWatchTransport = (
       format: (entry: LogEntry) => JSON.stringify(entry),
     };
     const logGroupName =
-      options.logGroupName ||
-      process.env.CLOUDWATCH_LOG_GROUP ||
-      "/aws/lambda/my-function";
+      options.logGroupName || process.env.CLOUDWATCH_LOG_GROUP;
     const logStreamName =
       options.logStreamName || process.env.CLOUDWATCH_LOG_STREAM;
     const region = options.region || process.env.AWS_REGION || "us-east-1";
@@ -52,8 +56,16 @@ export const createCloudWatchTransport = (
     const batchSize = options.batchSize || 10;
     const flushInterval = options.flushInterval || 5000;
     const timeout = options.timeout || 30000;
+    const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
 
-    // Validate required configuration
+    // Validate required configuration - logGroupName is required
+    if (!logGroupName) {
+      throw createDetailedError("CLOUDWATCH_MISSING_LOG_GROUP", transportName, {
+        message:
+          "logGroupName is required. Provide it via options.logGroupName or CLOUDWATCH_LOG_GROUP environment variable.",
+      });
+    }
+
     validateEnvironmentVariable("CLOUDWATCH_LOG_GROUP", logGroupName, false);
     validateEnvironmentVariable("AWS_REGION", region, false);
 
@@ -75,6 +87,28 @@ export const createCloudWatchTransport = (
 
     let flushTimer: ReturnType<typeof setInterval> | null = null;
 
+    // Lazily initialized CloudWatch client (created on first use, reused thereafter)
+    // Using 'any' for dynamic import types - the SDK is optional and dynamically loaded
+    // biome-ignore lint/suspicious/noExplicitAny: AWS SDK is dynamically imported
+    let cloudWatchClient: any = null;
+    // biome-ignore lint/suspicious/noExplicitAny: AWS SDK is dynamically imported
+    let awsSdkModule: any = null;
+
+    const getClient = async () => {
+      if (!awsSdkModule) {
+        awsSdkModule = await import("@aws-sdk/client-cloudwatch-logs");
+      }
+      if (!cloudWatchClient) {
+        cloudWatchClient = new awsSdkModule.CloudWatchLogsClient({
+          region,
+          requestHandler: {
+            requestTimeout: timeout,
+          },
+        });
+      }
+      return { client: cloudWatchClient, sdk: awsSdkModule };
+    };
+
     const shouldRotateStream = (): boolean => {
       const timeSinceStart = Date.now() - state.streamStartTime;
       return (
@@ -90,26 +124,17 @@ export const createCloudWatchTransport = (
         : `${new Date().toISOString().split("T")[0]}-${timestamp}`;
     };
 
-    const sendToCloudWatch = async (entries: LogEntry[]): Promise<void> => {
+    const sendToCloudWatch = async (
+      entries: LogEntry[],
+      retryCount = 0,
+    ): Promise<void> => {
       try {
-        // Dynamic import of AWS SDK v3
-        const {
-          CloudWatchLogsClient,
-          PutLogEventsCommand,
-          CreateLogStreamCommand,
-        } = await import("@aws-sdk/client-cloudwatch-logs");
-
-        const client = new CloudWatchLogsClient({
-          region,
-          requestHandler: {
-            requestTimeout: timeout,
-          },
-        });
+        const { client, sdk } = await getClient();
 
         // Create log stream if it doesn't exist
         try {
           await client.send(
-            new CreateLogStreamCommand({
+            new sdk.CreateLogStreamCommand({
               logGroupName,
               logStreamName: state.currentStreamName,
             }),
@@ -129,7 +154,7 @@ export const createCloudWatchTransport = (
           message: formatter.format(entry),
         }));
 
-        const command = new PutLogEventsCommand({
+        const command = new sdk.PutLogEventsCommand({
           logGroupName,
           logStreamName: state.currentStreamName,
           logEvents,
@@ -144,21 +169,30 @@ export const createCloudWatchTransport = (
         }
 
         // Update size (approximate)
-        const batchSize = logEvents.reduce(
+        const currentBatchSize = logEvents.reduce(
           (sum, event) => sum + event.message.length,
           0,
         );
-        state.currentStreamSize += batchSize;
+        state.currentStreamSize += currentBatchSize;
       } catch (error: unknown) {
-        // Handle sequence token errors
+        // Handle sequence token errors with retry limit
         if (
           error instanceof Error &&
           error.name === "InvalidSequenceTokenException"
         ) {
+          if (retryCount >= maxRetries) {
+            throw createDetailedError("CLOUDWATCH_API_ERROR", transportName, {
+              error: `Max retries (${maxRetries}) exceeded for InvalidSequenceTokenException`,
+              logGroupName,
+              logStreamName: state.currentStreamName,
+              region,
+            });
+          }
+
           const match = error.message.match(/sequenceToken is: (.+)/);
           if (match) {
             state.sequenceToken = match[1];
-            await sendToCloudWatch(entries); // Retry
+            await sendToCloudWatch(entries, retryCount + 1);
             return;
           }
         }

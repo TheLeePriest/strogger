@@ -4,18 +4,23 @@ export interface BatchConfig {
   maxSize: number; // Maximum number of logs in a batch
   maxWaitTime: number; // Maximum time to wait before flushing (ms)
   maxBatchSize: number; // Maximum size of batch in bytes
+  maxRetries?: number; // Maximum number of retries for failed batches (default: 3)
+  onFlushError?: (error: unknown, failedLogs: LogEntry[]) => void; // Callback for flush errors
 }
 
 export interface BatchState {
   logs: LogEntry[];
+  retryQueue: LogEntry[]; // Separate queue for failed logs to maintain order
   currentSize: number;
   lastFlush: number;
   flushTimer?: ReturnType<typeof setTimeout> | undefined;
+  retryCount: number;
 }
 
 export interface BatchedTransport extends Transport {
   flush: () => Promise<void>;
   getStats: () => BatchStats;
+  close: () => Promise<void>;
 }
 
 export interface BatchStats {
@@ -24,8 +29,12 @@ export interface BatchStats {
   averageBatchSize: number;
   lastFlushTime: number;
   pendingLogs: number;
+  retryQueueSize: number;
+  failedBatches: number;
   [key: string]: unknown;
 }
+
+const DEFAULT_MAX_RETRIES = 3;
 
 /**
  * Creates a batched transport wrapper around an existing transport
@@ -38,10 +47,15 @@ export const createBatchedTransport = (
     maxBatchSize: 1024 * 1024, // 1MB
   },
 ): BatchedTransport => {
+  const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const onFlushError = config.onFlushError;
+
   const state: BatchState = {
     logs: [],
+    retryQueue: [],
     currentSize: 0,
     lastFlush: Date.now(),
+    retryCount: 0,
   };
 
   const stats = {
@@ -50,15 +64,40 @@ export const createBatchedTransport = (
     averageBatchSize: 0,
     lastFlushTime: 0,
     pendingLogs: 0,
-  };
-
-  const calculateBatchSize = (logs: LogEntry[]): number => {
-    return logs.reduce((size, log) => {
-      return size + JSON.stringify(log).length;
-    }, 0);
+    retryQueueSize: 0,
+    failedBatches: 0,
   };
 
   const flush = async (): Promise<void> => {
+    // First, process retry queue (older logs first to maintain order)
+    if (state.retryQueue.length > 0 && state.retryCount < maxRetries) {
+      const retryLogs = [...state.retryQueue];
+      state.retryQueue = [];
+
+      try {
+        await Promise.allSettled(retryLogs.map((log) => transport.log(log)));
+        stats.totalLogs += retryLogs.length;
+        state.retryCount = 0; // Reset retry count on success
+      } catch (error) {
+        state.retryCount++;
+        if (state.retryCount < maxRetries) {
+          // Put back in retry queue for next attempt
+          state.retryQueue = retryLogs;
+        } else {
+          // Max retries exceeded, drop the logs and notify
+          stats.failedBatches++;
+          console.error(
+            `Batch flush failed after ${maxRetries} retries, dropping ${retryLogs.length} logs:`,
+            error,
+          );
+          if (onFlushError) {
+            onFlushError(error, retryLogs);
+          }
+          state.retryCount = 0;
+        }
+      }
+    }
+
     if (state.logs.length === 0) return;
 
     const logsToSend = [...state.logs];
@@ -82,11 +121,12 @@ export const createBatchedTransport = (
       stats.averageBatchSize = stats.totalLogs / stats.totalBatches;
       stats.lastFlushTime = Date.now();
       stats.pendingLogs = state.logs.length;
+      stats.retryQueueSize = state.retryQueue.length;
     } catch (error) {
       console.error("Batch flush failed:", error);
-      // Re-add logs to the batch for retry
-      state.logs.unshift(...logsToSend);
-      state.currentSize = calculateBatchSize(state.logs);
+      // Add to retry queue (maintains order - new logs come after retry queue)
+      state.retryQueue.push(...logsToSend);
+      stats.retryQueueSize = state.retryQueue.length;
     }
   };
 
@@ -128,7 +168,21 @@ export const createBatchedTransport = (
   };
 
   const getStats = (): BatchStats => {
-    return { ...stats, pendingLogs: state.logs.length };
+    return {
+      ...stats,
+      pendingLogs: state.logs.length,
+      retryQueueSize: state.retryQueue.length,
+    };
+  };
+
+  const close = async (): Promise<void> => {
+    // Clear timer
+    if (state.flushTimer) {
+      clearTimeout(state.flushTimer);
+      state.flushTimer = undefined;
+    }
+    // Final flush attempt
+    await flush();
   };
 
   return {
@@ -137,6 +191,7 @@ export const createBatchedTransport = (
     getLevel,
     flush,
     getStats,
+    close,
   };
 };
 
@@ -182,11 +237,18 @@ export const createBatchedLogger = (
     return batchedTransports.map((transport) => transport.getStats());
   };
 
+  const close = async (): Promise<void> => {
+    await Promise.allSettled(
+      batchedTransports.map((transport) => transport.close()),
+    );
+  };
+
   return {
     log,
     setLevel,
     getLevel,
     flush,
     getStats,
+    close,
   };
 };

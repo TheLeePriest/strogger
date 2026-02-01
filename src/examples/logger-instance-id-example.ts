@@ -32,7 +32,11 @@ const demonstrateAutomaticInstanceId = () => {
   // All logs from this logger will include the same instance ID
   strogger.info("First log message", { requestId: "req-123" });
   strogger.debug("Debug message", { userId: "user-456" });
-  strogger.error("Error message", { operation: "test" }, new Error("Test error"));
+  strogger.error(
+    "Error message",
+    { operation: "test" },
+    new Error("Test error"),
+  );
 
   return strogger;
 };
@@ -142,7 +146,9 @@ const demonstrateInstanceIdInContexts = () => {
   // Instance ID is automatically included in all log contexts
   strogger.logFunctionStart("processOrder", { orderId: "order-123" });
   strogger.logDatabaseOperation("SELECT", "users", { table: "users" });
-  strogger.logApiRequest("POST", "/api/orders", 201, { endpoint: "/api/orders" });
+  strogger.logApiRequest("POST", "/api/orders", 201, {
+    endpoint: "/api/orders",
+  });
   strogger.logFunctionEnd("processOrder", 150, { orderId: "order-123" });
 
   return strogger;

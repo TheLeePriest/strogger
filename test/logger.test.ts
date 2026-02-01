@@ -435,8 +435,10 @@ describe("createLogger", () => {
       // Should not throw an error
       await logger.info("Test message");
 
-      // Should log transport error to console (Error object)
+      // Should log transport error to console via the default error handler
+      // The new format includes a prefix and the error object separately
       expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Transport error"),
         expect.objectContaining({
           message: expect.stringContaining("Transport failed"),
         }),

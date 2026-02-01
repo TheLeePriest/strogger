@@ -1,156 +1,116 @@
-import { createJsonFormatter } from "./formatters/json-formatter";
+import {
+  createJsonFormatter,
+  createPrettyFormatter,
+} from "./formatters/json-formatter";
 import { createConsoleTransport } from "./transports/console-transport";
 import type {
   Formatter,
   LogContext,
   LogEntry,
+  Logger,
   LoggerConfig,
+  SerializedError,
+  SimpleLoggerOptions,
   Transport,
+  TransportErrorHandler,
 } from "./types";
-import { LogLevel } from "./types";
+import { LogLevel, parseLogLevel } from "./types";
 import { createBatchedTransport } from "./utils/batching";
-import {
-  createDefaultEnrichmentMiddleware,
-  generateLoggerInstanceId,
-} from "./utils/enrichment";
+import type { BatchedTransport } from "./utils/batching";
+import { getContext } from "./utils/context";
+import { generateLoggerInstanceId } from "./utils/enrichment";
 import { getEnvironment } from "./utils/environment";
 import type { LoggerEnvironment } from "./utils/environment";
 import { createLogFilter } from "./utils/sampling";
 
-const getLogLevelFromEnv = (env: LoggerEnvironment): LogLevel => {
-  if (!env || typeof env !== 'object') {
-    console.warn('[strogger] No environment provided, defaulting to DEBUG');
-    return LogLevel.DEBUG;
-  }
-  const level = env.LOG_LEVEL?.toUpperCase();
-  switch (level) {
-    case "DEBUG":
-      return LogLevel.DEBUG;
-    case "INFO":
-      return LogLevel.INFO;
-    case "WARN":
-      return LogLevel.WARN;
-    case "ERROR":
-      return LogLevel.ERROR;
-    case "FATAL":
-      return LogLevel.FATAL;
-    case undefined:
-      // No LOG_LEVEL set
-      return env.STAGE === "prod" ? LogLevel.INFO : LogLevel.DEBUG;
-    default:
-      console.warn(`[strogger] Invalid LOG_LEVEL '${env.LOG_LEVEL}' provided. Defaulting to ${env.STAGE === "prod" ? "INFO" : "DEBUG"}.`);
-      return env.STAGE === "prod" ? LogLevel.INFO : LogLevel.DEBUG;
-  }
+/**
+ * Default error handler that logs transport errors to console.
+ */
+const defaultErrorHandler: TransportErrorHandler = (error, transportName) => {
+  console.error(
+    `[strogger] Transport error${transportName ? ` (${transportName})` : ""}:`,
+    error,
+  );
 };
 
-const shouldLog = (level: LogLevel, config: LoggerConfig): boolean => {
-  return level >= (config.level !== undefined ? config.level : LogLevel.INFO);
+/**
+ * Get log level from environment, with fallback logic.
+ */
+const getLogLevelFromEnv = (env: LoggerEnvironment): LogLevel => {
+  if (!env || typeof env !== "object") {
+    return LogLevel.DEBUG;
+  }
+
+  const parsed = parseLogLevel(env.LOG_LEVEL);
+  if (parsed !== undefined) {
+    return parsed;
+  }
+
+  // No LOG_LEVEL set - use sensible defaults
+  return env.STAGE === "prod" ? LogLevel.INFO : LogLevel.DEBUG;
+};
+
+const shouldLog = (level: LogLevel, minLevel: LogLevel): boolean => {
+  return level >= minLevel;
+};
+
+/**
+ * Serialize an Error object to a plain object for JSON logging.
+ */
+const serializeError = (error: Error): SerializedError => {
+  const serialized: SerializedError = {
+    name: error.name,
+    message: error.message,
+  };
+  if (error.stack !== undefined) {
+    serialized.stack = error.stack;
+  }
+  return serialized;
 };
 
 const createLogEntry = (
-  config: LoggerConfig,
+  serviceName: string | undefined,
+  stage: string | undefined,
   level: LogLevel,
   message: string,
   context?: LogContext,
   error?: Error,
   metadata?: Record<string, unknown>,
-) => {
+): LogEntry => {
   return {
     timestamp: new Date().toISOString(),
     level,
     message,
     context: {
-      ...(config.stage && { stage: config.stage }),
-      ...(config.serviceName && { serviceName: config.serviceName }),
+      ...(stage && { stage }),
+      ...(serviceName && { serviceName }),
       ...context,
     },
-    error: error
-      ? ({
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        } as Error)
-      : undefined,
+    error: error ? serializeError(error) : undefined,
     metadata,
   };
 };
 
-export const createLogger = ({
-  config = {},
-  transports = [],
-  formatter: _formatter,
-  env,
-}: {
-  config?: LoggerConfig;
-  transports?: Transport[];
-  formatter: Formatter;
-  env: LoggerEnvironment;
-}) => {
-  // Generate or use provided instance ID
-  const instanceId = config.instanceId || generateLoggerInstanceId();
+/**
+ * Internal logger creation with full options.
+ * Used by both createLogger and child().
+ */
+interface InternalLoggerOptions {
+  config: LoggerConfig;
+  transports: Array<Transport | BatchedTransport>;
+  onError: TransportErrorHandler;
+  instanceId: string;
+  logFilter: ReturnType<typeof createLogFilter>;
+  baseContext: LogContext;
+  useBatching: boolean;
+}
 
-  // Merge config: config.level should override env
-  const mergedConfig: LoggerConfig = {
-    level: getLogLevelFromEnv(env),
-    serviceName: env.SERVICE_NAME || undefined,
-    stage: env.STAGE || "dev",
-    enableStructuredLogging: env.ENABLE_STRUCTURED_LOGGING ?? true,
-    includeTimestamp: true,
-    includeLogLevel: true,
-    instanceId, // Always include the instance ID
-    ...config, // config.level will override above
-  };
-
-  // Normalize config.level to a number
-  if (typeof mergedConfig.level === "string") {
-    switch ((mergedConfig.level as string).toUpperCase()) {
-      case "DEBUG":
-        mergedConfig.level = LogLevel.DEBUG;
-        break;
-      case "INFO":
-        mergedConfig.level = LogLevel.INFO;
-        break;
-      case "WARN":
-        mergedConfig.level = LogLevel.WARN;
-        break;
-      case "ERROR":
-        mergedConfig.level = LogLevel.ERROR;
-        break;
-      case "FATAL":
-        mergedConfig.level = LogLevel.FATAL;
-        break;
-      default:
-        mergedConfig.level = LogLevel.INFO;
-    }
-  }
-
-  // Always prefer explicit userConfig.level if provided (even if 0)
-  if (config.level !== undefined) {
-    mergedConfig.level = config.level;
-  }
-
-  // Create sampling and rate limiting filter
-  const logFilter = createLogFilter(mergedConfig);
-
-  // Create enrichment middleware
-  const enrichmentMiddleware = createDefaultEnrichmentMiddleware(
-    mergedConfig.serviceName,
-    mergedConfig.stage,
-    undefined, // sessionId
-    instanceId, // instanceId
-  );
-
-  // Only use batching if explicitly configured
-  const useBatching = config.batching === true;
-  const loggerTransports = useBatching
-    ? transports.map((transport) =>
-        createBatchedTransport(transport, {
-          maxSize: 50,
-          maxWaitTime: 2000,
-          maxBatchSize: 512 * 1024,
-        }),
-      )
-    : transports;
+const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
+  const { config, transports, onError, instanceId, logFilter, useBatching } =
+    options;
+  let { baseContext } = options;
+  let isShutdown = false;
+  let currentLevel = config.level ?? LogLevel.INFO;
 
   const log = async (
     level: LogLevel,
@@ -158,115 +118,102 @@ export const createLogger = ({
     context?: LogContext,
     error?: Error,
     metadata?: Record<string, unknown>,
-  ) => {
-    // Check log level first
-    if (!shouldLog(level, mergedConfig)) {
-      return;
-    }
+  ): Promise<void> => {
+    if (isShutdown) return;
+    if (!shouldLog(level, currentLevel)) return;
 
     // Check sampling and rate limiting only if configured
-    if (mergedConfig.samplingRate !== undefined || mergedConfig.rateLimit) {
-      if (!logFilter.shouldLog()) {
-        return;
-      }
+    if (config.samplingRate !== undefined || config.rateLimit) {
+      if (!logFilter.shouldLog()) return;
     }
 
-    // Enrich context with correlation IDs and tracing
-    const enrichedContext = enrichmentMiddleware(context || {});
+    // Merge contexts: AsyncLocalStorage -> baseContext -> call context
+    const asyncContext = getContext();
+    const mergedContext: LogContext = {
+      ...asyncContext,
+      ...baseContext,
+      ...context,
+      instanceId,
+    };
 
     // Create log entry
     const entry = createLogEntry(
-      mergedConfig,
+      config.serviceName,
+      config.stage,
       level,
       message,
-      enrichedContext,
+      mergedContext,
       error,
       metadata,
     );
 
-    // Medium-priority: log redaction/encryption
+    // Apply redaction if configured
     let processedEntry: LogEntry = entry;
-    if (typeof mergedConfig.redact === "function") {
-      processedEntry = mergedConfig.redact(entry);
+    if (typeof config.redact === "function") {
+      processedEntry = config.redact(entry);
     }
 
-    // Medium-priority: log validation
-    if (typeof mergedConfig.validate === "function") {
+    // Apply validation if configured
+    if (typeof config.validate === "function") {
       try {
-        mergedConfig.validate(processedEntry);
+        config.validate(processedEntry);
       } catch (validationError) {
-        // Log validation error and skip sending
-        console.error(
-          "[LOGGER ERROR] Log entry validation failed:",
-          validationError,
-        );
+        onError(validationError, "validation");
         return;
       }
     }
 
-    // Medium-priority: custom hooks (analytics/metrics)
-    if (Array.isArray(mergedConfig.hooks)) {
-      for (const hook of mergedConfig.hooks) {
+    // Execute hooks if configured
+    if (Array.isArray(config.hooks)) {
+      for (const hook of config.hooks) {
         try {
-          // Await if hook returns a promise
           const result = hook(processedEntry);
           if (result && typeof result.then === "function") {
             await result;
           }
         } catch (hookError) {
-          // Log hook errors but do not block logging
-          console.error("[LOGGER ERROR] Log hook failed:", hookError);
+          onError(hookError, "hook");
         }
       }
     }
 
     // Send to all transports
     const results = await Promise.allSettled(
-      loggerTransports.map((transport) => transport.log(processedEntry)),
+      transports.map(async (transport, index) => {
+        try {
+          await transport.log(processedEntry);
+        } catch (err: unknown) {
+          const transportName =
+            (transport as { name?: string }).name || `transport-${index}`;
+          throw { error: err, transportName };
+        }
+      }),
     );
 
-    // Log any async transport errors
     for (const result of results) {
       if (result.status === "rejected") {
-        console.error(result.reason);
+        const { error: err, transportName } = result.reason as {
+          error: unknown;
+          transportName: string;
+        };
+        onError(err, transportName);
       }
     }
   };
 
-  return {
-    debug: (
-      message: string,
-      context?: LogContext,
-      metadata?: Record<string, unknown>,
-    ) => log(LogLevel.DEBUG, message, context, undefined, metadata),
-    info: (
-      message: string,
-      context?: LogContext,
-      metadata?: Record<string, unknown>,
-    ) => log(LogLevel.INFO, message, context, undefined, metadata),
-    warn: (
-      message: string,
-      context?: LogContext,
-      error?: Error,
-      metadata?: Record<string, unknown>,
-    ) => log(LogLevel.WARN, message, context, error, metadata),
-    error: (
-      message: string,
-      context?: LogContext,
-      error?: Error,
-      metadata?: Record<string, unknown>,
-    ) => log(LogLevel.ERROR, message, context, error, metadata),
-    fatal: (
-      message: string,
-      context?: LogContext,
-      error?: Error,
-      metadata?: Record<string, unknown>,
-    ) => log(LogLevel.FATAL, message, context, error, metadata),
-    logFunctionStart: (
-      functionName: string,
-      context?: LogContext,
-      metadata?: Record<string, unknown>,
-    ) =>
+  const logger: Logger = {
+    debug: (message, context?, metadata?) =>
+      log(LogLevel.DEBUG, message, context, undefined, metadata),
+    info: (message, context?, metadata?) =>
+      log(LogLevel.INFO, message, context, undefined, metadata),
+    warn: (message, context?, error?, metadata?) =>
+      log(LogLevel.WARN, message, context, error, metadata),
+    error: (message, context?, error?, metadata?) =>
+      log(LogLevel.ERROR, message, context, error, metadata),
+    fatal: (message, context?, error?, metadata?) =>
+      log(LogLevel.FATAL, message, context, error, metadata),
+
+    logFunctionStart: (functionName, context?, metadata?) =>
       log(
         LogLevel.INFO,
         `Function ${functionName} started`,
@@ -274,12 +221,8 @@ export const createLogger = ({
         undefined,
         metadata,
       ),
-    logFunctionEnd: (
-      functionName: string,
-      duration: number,
-      context?: LogContext,
-      metadata?: Record<string, unknown>,
-    ) =>
+
+    logFunctionEnd: (functionName, duration, context?, metadata?) =>
       log(
         LogLevel.INFO,
         `Function ${functionName} completed in ${duration}ms`,
@@ -287,12 +230,8 @@ export const createLogger = ({
         undefined,
         metadata,
       ),
-    logDatabaseOperation: (
-      operation: string,
-      table: string,
-      context?: LogContext,
-      metadata?: Record<string, unknown>,
-    ) =>
+
+    logDatabaseOperation: (operation, table, context?, metadata?) =>
       log(
         LogLevel.DEBUG,
         `Database operation: ${operation} on table ${table}`,
@@ -300,13 +239,8 @@ export const createLogger = ({
         undefined,
         metadata,
       ),
-    logApiRequest: (
-      method: string,
-      path: string,
-      statusCode: number,
-      context?: LogContext,
-      metadata?: Record<string, unknown>,
-    ) =>
+
+    logApiRequest: (method, path, statusCode, context?, metadata?) =>
       log(
         LogLevel.INFO,
         `API ${method} ${path} - ${statusCode}`,
@@ -314,60 +248,232 @@ export const createLogger = ({
         undefined,
         metadata,
       ),
-    setLevel: (level: LogLevel) => {
-      mergedConfig.level = level;
+
+    child: (childContext: LogContext): Logger => {
+      // Create a new logger with merged context
+      return createLoggerInternal({
+        ...options,
+        baseContext: { ...baseContext, ...childContext },
+      });
+    },
+
+    setLevel: (level: LogLevel): void => {
+      currentLevel = level;
       for (const t of transports) {
-        t.setLevel?.(level);
+        t.setLevel(level);
       }
     },
-    getLevel: () =>
-      mergedConfig.level !== undefined ? mergedConfig.level : LogLevel.INFO,
-    getInstanceId: () => instanceId,
-    addTransport: (transport: Transport) => transports.push(transport),
-    removeTransport: (transport: Transport) => {
+
+    getLevel: (): LogLevel => currentLevel,
+
+    getInstanceId: (): string => instanceId,
+
+    addTransport: (transport: Transport): void => {
+      if (useBatching) {
+        transports.push(
+          createBatchedTransport(transport, {
+            maxSize: 50,
+            maxWaitTime: 2000,
+            maxBatchSize: 512 * 1024,
+          }),
+        );
+      } else {
+        transports.push(transport);
+      }
+    },
+
+    removeTransport: (transport: Transport): void => {
       const idx = transports.indexOf(transport);
       if (idx > -1) transports.splice(idx, 1);
     },
-    setFormatter: (_newFormatter: Formatter) => {
-      // Note: formatter is available for custom formatting
-      // formatter = newFormatter;
-    },
+
     getSamplingStats: () => logFilter.getStats(),
-    flush: async () => {
+
+    flush: async (): Promise<void> => {
       await Promise.allSettled(
-        loggerTransports.map(
-          (transport) => transport.flush?.() || Promise.resolve(),
-        ),
+        transports.map((transport) => transport.flush?.() || Promise.resolve()),
       );
     },
-    getBatchStats: () => loggerTransports.map((t) => t.getStats?.() || {}),
+
+    getBatchStats: () => transports.map((t) => t.getStats?.() || {}),
+
+    shutdown: async (): Promise<void> => {
+      if (isShutdown) return;
+      isShutdown = true;
+
+      await Promise.allSettled(
+        transports.map(async (transport) => {
+          if (transport.flush) {
+            await transport.flush();
+          }
+          if ("close" in transport && typeof transport.close === "function") {
+            await (transport as BatchedTransport).close();
+          }
+        }),
+      );
+    },
   };
+
+  return logger;
 };
 
-// Create and export a default logger instance
-const env = getEnvironment();
-const defaultFormatter = createJsonFormatter();
-const defaultTransport = createConsoleTransport({
-  formatter: defaultFormatter,
-});
+// ============================================================================
+// PUBLIC API
+// ============================================================================
 
-export const strogger = createLogger({
-  config: {},
-  transports: [defaultTransport],
-  formatter: defaultFormatter,
-  env,
-});
+/**
+ * Advanced options for createLogger (backward compatible)
+ */
+export interface CreateLoggerOptions {
+  config?: LoggerConfig;
+  transports?: Transport[];
+  /** @deprecated Formatter is configured on transports, not the logger */
+  formatter?: Formatter;
+  env?: LoggerEnvironment;
+}
 
-// Branded alias for createLogger
-export const createStrogger = createLogger;
+/**
+ * Create a logger with full configuration options.
+ *
+ * For most use cases, the simpler `logger()` function is recommended.
+ *
+ * @example
+ * ```typescript
+ * const log = createLogger({
+ *   config: { serviceName: 'my-service', level: LogLevel.DEBUG },
+ *   transports: [createConsoleTransport({ formatter: createJsonFormatter() })],
+ * });
+ * ```
+ */
+export const createLogger = (options: CreateLoggerOptions = {}): Logger => {
+  const env = options.env || getEnvironment();
+  const instanceId = options.config?.instanceId || generateLoggerInstanceId();
 
-export const printLoggerConfig = (env: LoggerEnvironment) => {
-  const level = getLogLevelFromEnv(env);
-  console.log('--- Strogger Logger Configuration ---');
-  console.log('LOG_LEVEL:', env.LOG_LEVEL ?? '(default)');
-  console.log('STAGE:', env.STAGE ?? 'dev');
-  console.log('SERVICE_NAME:', env.SERVICE_NAME ?? '(none)');
-  console.log('ENABLE_STRUCTURED_LOGGING:', env.ENABLE_STRUCTURED_LOGGING ?? true);
-  console.log('Effective log level:', level);
-  console.log('--------------------------------------');
+  const config: LoggerConfig = {
+    level: options.config?.level ?? getLogLevelFromEnv(env),
+    serviceName: options.config?.serviceName || env.SERVICE_NAME,
+    stage: options.config?.stage || env.STAGE || "dev",
+    enableStructuredLogging: env.ENABLE_STRUCTURED_LOGGING ?? true,
+    instanceId,
+    ...options.config,
+  };
+
+  // Normalize level if string
+  if (typeof config.level === "string") {
+    config.level = parseLogLevel(config.level as string) ?? LogLevel.INFO;
+  }
+
+  const useBatching = options.config?.batching === true;
+  const transports: Array<Transport | BatchedTransport> = useBatching
+    ? (options.transports || []).map((t) =>
+        createBatchedTransport(t, {
+          maxSize: 50,
+          maxWaitTime: 2000,
+          maxBatchSize: 512 * 1024,
+        }),
+      )
+    : options.transports || [];
+
+  // If no transports provided, add default console transport
+  if (transports.length === 0) {
+    const isProd = config.stage === "prod" || config.stage === "production";
+    const formatter = isProd ? createJsonFormatter() : createPrettyFormatter();
+    const transportLevel = config.level ?? LogLevel.INFO;
+    transports.push(
+      createConsoleTransport({ formatter, level: transportLevel }),
+    );
+  }
+
+  return createLoggerInternal({
+    config,
+    transports,
+    onError: config.onError || defaultErrorHandler,
+    instanceId,
+    logFilter: createLogFilter(config),
+    baseContext: {},
+    useBatching,
+  });
+};
+
+/**
+ * Create a logger with simple, sensible defaults.
+ *
+ * This is the recommended way to create a logger for most applications.
+ *
+ * @example
+ * ```typescript
+ * // Minimal - just works
+ * const log = logger();
+ *
+ * // With service name
+ * const log = logger({ serviceName: 'api-server' });
+ *
+ * // With options
+ * const log = logger({
+ *   serviceName: 'api-server',
+ *   level: LogLevel.DEBUG,
+ *   pretty: true,
+ * });
+ * ```
+ */
+export const logger = (options: SimpleLoggerOptions = {}): Logger => {
+  const env = getEnvironment();
+  const isProd = (options.stage || env.STAGE) === "prod";
+  const usePretty = options.pretty ?? !isProd;
+
+  const formatter = usePretty ? createPrettyFormatter() : createJsonFormatter();
+  const level = options.level ?? (isProd ? LogLevel.INFO : LogLevel.DEBUG);
+
+  const transports: Transport[] = [
+    createConsoleTransport({ formatter, level }),
+    ...(options.transports || []),
+  ];
+
+  const config: LoggerConfig = {
+    serviceName: options.serviceName || env.SERVICE_NAME,
+    stage: options.stage || env.STAGE || "dev",
+    level,
+  };
+
+  if (options.onError) {
+    config.onError = options.onError;
+  }
+
+  return createLogger({
+    config,
+    transports,
+  });
+};
+
+// ============================================================================
+// DEFAULT INSTANCE
+// ============================================================================
+
+/**
+ * Default logger instance with sensible defaults.
+ * Uses pretty printing in development, JSON in production.
+ *
+ * @example
+ * ```typescript
+ * import { strogger } from 'strogger';
+ *
+ * strogger.info('Hello world');
+ * strogger.info('User logged in', { userId: '123' });
+ * ```
+ */
+export const strogger = logger();
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+export const printLoggerConfig = (env?: LoggerEnvironment): void => {
+  const e = env || getEnvironment();
+  const level = getLogLevelFromEnv(e);
+  console.log("--- Strogger Logger Configuration ---");
+  console.log("LOG_LEVEL:", e.LOG_LEVEL ?? "(default)");
+  console.log("STAGE:", e.STAGE ?? "dev");
+  console.log("SERVICE_NAME:", e.SERVICE_NAME ?? "(none)");
+  console.log("Effective log level:", LogLevel[level]);
+  console.log("--------------------------------------");
 };

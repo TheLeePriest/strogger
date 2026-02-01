@@ -6,22 +6,55 @@ export interface PerformanceMetrics {
   metadata?: Record<string, unknown>;
 }
 
+export interface PerformanceMonitorConfig {
+  /** Maximum number of metrics to store per function. Oldest entries are evicted when exceeded. Default: 1000 */
+  maxEntriesPerFunction?: number;
+  /** Maximum age of metrics in milliseconds. Metrics older than this are evicted. Default: undefined (no TTL) */
+  maxAge?: number;
+}
+
 export interface PerformanceMonitorState {
   metrics: Map<string, PerformanceMetrics[]>;
 }
 
+const DEFAULT_MAX_ENTRIES_PER_FUNCTION = 1000;
+
 export const createPerformanceMonitor = (
   initialState?: PerformanceMonitorState,
+  config: PerformanceMonitorConfig = {},
 ) => {
   const state: PerformanceMonitorState = initialState || { metrics: new Map() };
+  const maxEntriesPerFunction =
+    config.maxEntriesPerFunction ?? DEFAULT_MAX_ENTRIES_PER_FUNCTION;
+  const maxAge = config.maxAge;
+
+  /**
+   * Evict old entries based on TTL if configured
+   */
+  const evictStaleEntries = (
+    metrics: PerformanceMetrics[],
+  ): PerformanceMetrics[] => {
+    if (!maxAge) return metrics;
+    const cutoff = performance.now() - maxAge;
+    return metrics.filter((m) => m.endTime >= cutoff);
+  };
 
   const recordMetric = (functionName: string, metric: PerformanceMetrics) => {
     if (!state.metrics.has(functionName)) {
       state.metrics.set(functionName, []);
     }
-    const metrics = state.metrics.get(functionName);
+    let metrics = state.metrics.get(functionName);
     if (metrics) {
+      // Evict stale entries first
+      metrics = evictStaleEntries(metrics);
+
+      // Evict oldest if at capacity
+      while (metrics.length >= maxEntriesPerFunction) {
+        metrics.shift();
+      }
+
       metrics.push(metric);
+      state.metrics.set(functionName, metrics);
     }
   };
 
@@ -112,11 +145,23 @@ export const createPerformanceMonitor = (
 
   const getMetrics = (functionName?: string): PerformanceMetrics[] => {
     if (functionName) {
-      return state.metrics.get(functionName) || [];
+      const metrics = state.metrics.get(functionName);
+      if (!metrics) return [];
+      // Evict stale entries on read
+      const freshMetrics = evictStaleEntries(metrics);
+      if (freshMetrics.length !== metrics.length) {
+        state.metrics.set(functionName, freshMetrics);
+      }
+      return freshMetrics;
     }
     const allMetrics: PerformanceMetrics[] = [];
-    for (const metrics of state.metrics.values()) {
-      allMetrics.push(...metrics);
+    for (const [name, metrics] of state.metrics.entries()) {
+      // Evict stale entries on read
+      const freshMetrics = evictStaleEntries(metrics);
+      if (freshMetrics.length !== metrics.length) {
+        state.metrics.set(name, freshMetrics);
+      }
+      allMetrics.push(...freshMetrics);
     }
     return allMetrics;
   };
@@ -166,6 +211,16 @@ export const createPerformanceMonitor = (
     return summary;
   };
 
+  const getConfig = (): PerformanceMonitorConfig => {
+    const config: PerformanceMonitorConfig = {
+      maxEntriesPerFunction,
+    };
+    if (maxAge !== undefined) {
+      config.maxAge = maxAge;
+    }
+    return config;
+  };
+
   return {
     state,
     startTimer,
@@ -176,5 +231,6 @@ export const createPerformanceMonitor = (
     getSlowestExecution,
     clearMetrics,
     getMetricsSummary,
+    getConfig,
   };
 };

@@ -1,14 +1,10 @@
 {
   "name": "strogger",
-  "version": "2.0.3",
-  "description": "📊 A modern structured logging library with functional programming, duck-typing, and comprehensive third-party integrations",
+  "version": "3.0.0",
+  "description": "A structured logging library for Node.js that makes request tracing easy",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist/**/*", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
     "test": "vitest",
@@ -87,11 +83,11 @@
     },
     "commit": {
       "message": "chore: release v{version}",
-      "body": "Structured logging library with functional programming, duck-typing, and comprehensive third-party integrations.\n\n- Structured JSON logging for all outputs\n- Multiple transport support (Console, DataDog, Splunk, Elasticsearch, New Relic, CloudWatch)\n- Advanced features: filtering, validation, redaction, sampling, rate limiting\n- Performance monitoring and correlation tracking\n- Comprehensive error handling with actionable messages\n- AWS Lambda optimized\n- TypeScript-first with strict typing"
+      "body": "Structured logging library for Node.js that makes request tracing easy.\n\n- Simple API: logger({ serviceName: 'my-app' })\n- Child loggers for request tracing\n- AsyncLocalStorage context propagation\n- Pretty printing for development\n- Multiple transports (Console, CloudWatch, DataDog, Splunk, Elasticsearch, New Relic)\n- TypeScript-first with full type safety"
     },
     "tag": {
       "message": "v{version}",
-      "body": "Structured logging library with functional programming, duck-typing, and comprehensive third-party integrations."
+      "body": "Structured logging library for Node.js that makes request tracing easy."
     }
   }
 }

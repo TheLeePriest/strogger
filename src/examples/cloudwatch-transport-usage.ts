@@ -174,7 +174,9 @@ const demonstrateCustomCloudWatchTransport = () => {
   strogger.info(
     "Application started with custom CloudWatch transport configuration",
   );
-  strogger.info("This transport uses custom settings for batching and timeouts");
+  strogger.info(
+    "This transport uses custom settings for batching and timeouts",
+  );
 
   // Demonstrate transport methods
   console.log("Current stream:", customCloudWatchTransport.getCurrentStream());

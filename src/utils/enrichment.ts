@@ -49,32 +49,56 @@ export const generateLoggerInstanceId = (): string => {
 };
 
 /**
- * Creates a correlation ID enricher
+ * Creates a correlation ID enricher.
+ *
+ * By default, generates a NEW correlation ID for each log entry that doesn't have one.
+ * This is the recommended behavior when using the context API (runWithContext).
+ *
+ * For backward compatibility, set `persistIds: true` to reuse IDs across the logger's lifetime.
  */
-export const createCorrelationEnricher = (): Enricher => {
-  let currentCorrelationId: string | undefined;
-  let currentTraceId: string | undefined;
-  let currentSpanId: string | undefined;
+export const createCorrelationEnricher = (options?: {
+  persistIds?: boolean;
+}): Enricher => {
+  const persistIds = options?.persistIds ?? false;
+
+  // Only used when persistIds is true
+  let persistedCorrelationId: string | undefined;
+  let persistedTraceId: string | undefined;
+  let persistedSpanId: string | undefined;
 
   return {
     name: "correlation",
     enrich: (context: LogContext): LogContext => {
       // Generate correlation ID if not present
       if (!context.correlationId) {
-        currentCorrelationId = currentCorrelationId || generateCorrelationId();
-        context.correlationId = currentCorrelationId;
+        if (persistIds) {
+          persistedCorrelationId =
+            persistedCorrelationId || generateCorrelationId();
+          context.correlationId = persistedCorrelationId;
+        } else {
+          // Generate fresh ID - caller should use runWithContext to share IDs
+          context.correlationId = generateCorrelationId();
+        }
       }
 
       // Generate trace ID if not present
       if (!context.traceId) {
-        currentTraceId = currentTraceId || generateTraceId();
-        context.traceId = currentTraceId;
+        if (persistIds) {
+          persistedTraceId = persistedTraceId || generateTraceId();
+          context.traceId = persistedTraceId;
+        } else {
+          context.traceId = generateTraceId();
+        }
       }
 
       // Generate span ID if not present
       if (!context.spanId) {
-        currentSpanId = currentSpanId || generateSpanId();
-        context.spanId = currentSpanId;
+        if (persistIds) {
+          persistedSpanId = persistedSpanId || generateSpanId();
+          context.spanId = persistedSpanId;
+        } else {
+          context.spanId = generateSpanId();
+        }
       }
 
       return context;
