@@ -24,6 +24,14 @@ log.info('User logged in', { userId: 'user-123' });
 log.error('Something failed', { orderId: 'order-456' }, new Error('Database timeout'));
 ```
 
+Or use the pre-configured default logger:
+
+```typescript
+import { strogger } from 'strogger';
+
+strogger.info('Quick logging without setup');
+```
+
 **Output (development - pretty printed):**
 ```
 12:34:56.789 INFO  Application started
@@ -111,6 +119,8 @@ LOG_LEVEL=info   # Default in production
 ```
 
 ```typescript
+import { logger, LogLevel } from 'strogger';
+
 const log = logger({ level: LogLevel.DEBUG });
 ```
 
