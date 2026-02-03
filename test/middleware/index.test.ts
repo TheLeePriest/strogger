@@ -5,7 +5,7 @@ import {
   attachLogger,
 } from "../../src/middleware";
 import { logger } from "../../src/logger";
-import { LogLevel } from "../../src/types";
+import type { Logger } from "../../src/types";
 
 // Mock request/response objects
 const createMockRequest = (overrides: Record<string, unknown> = {}) => ({
@@ -40,6 +40,7 @@ describe("middleware", () => {
   let infoSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
+  let currentLogger: ReturnType<typeof logger> | null = null;
 
   beforeEach(() => {
     debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
@@ -48,21 +49,25 @@ describe("middleware", () => {
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (currentLogger) {
+      await currentLogger.shutdown();
+      currentLogger = null;
+    }
     vi.restoreAllMocks();
   });
 
   describe("createRequestLogger", () => {
     it("should create middleware function", () => {
-      const log = logger({ serviceName: "test" });
-      const middleware = createRequestLogger({ logger: log });
+      currentLogger = logger({ serviceName: "test" });
+      const middleware = createRequestLogger({ logger: currentLogger });
       expect(typeof middleware).toBe("function");
     });
 
     it("should log request start and end", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
+      currentLogger = logger({ serviceName: "test", pretty: false });
       const middleware = createRequestLogger({
-        logger: log,
+        logger: currentLogger,
         startLevel: "info",
         endLevel: "info",
       });
@@ -76,21 +81,25 @@ describe("middleware", () => {
       });
 
       expect(nextCalled).toBe(true);
+
+      // Flush to ensure start log is processed
+      await currentLogger.flush();
       expect(infoSpy).toHaveBeenCalledTimes(1); // Start log
 
       // Simulate response finish
       res.emit("finish");
 
-      // Wait for async operations
+      // Wait for async operations and flush
       await new Promise((resolve) => setTimeout(resolve, 10));
+      await currentLogger.flush();
 
       expect(infoSpy).toHaveBeenCalledTimes(2); // Start + end log
     });
 
-    it("should skip logging when skip function returns true", () => {
-      const log = logger({ serviceName: "test" });
+    it("should skip logging when skip function returns true", async () => {
+      currentLogger = logger({ serviceName: "test" });
       const middleware = createRequestLogger({
-        logger: log,
+        logger: currentLogger,
         skip: (req) => req.path === "/health",
       });
 
@@ -102,17 +111,19 @@ describe("middleware", () => {
         nextCalled = true;
       });
 
+      await currentLogger.flush();
+
       expect(nextCalled).toBe(true);
       expect(infoSpy).not.toHaveBeenCalled();
       expect(debugSpy).not.toHaveBeenCalled();
     });
 
     it("should extract custom context", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
+      currentLogger = logger({ serviceName: "test", pretty: false });
       const middleware = createRequestLogger({
-        logger: log,
+        logger: currentLogger,
         startLevel: "info",
-        getContext: (req) => ({
+        getContext: () => ({
           customField: "custom-value",
         }),
       });
@@ -121,6 +132,7 @@ describe("middleware", () => {
       const res = createMockResponse();
 
       middleware(req, res, () => {});
+      await currentLogger.flush();
 
       const loggedMessage = infoSpy.mock.calls[0][0] as string;
       const parsed = JSON.parse(loggedMessage);
@@ -128,9 +140,9 @@ describe("middleware", () => {
     });
 
     it("should include timing when enabled", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
+      currentLogger = logger({ serviceName: "test", pretty: false });
       const middleware = createRequestLogger({
-        logger: log,
+        logger: currentLogger,
         timing: true,
         startLevel: "info",
         endLevel: "info",
@@ -140,12 +152,14 @@ describe("middleware", () => {
       const res = createMockResponse();
 
       middleware(req, res, () => {});
+      await currentLogger.flush();
 
       // Add small delay to have measurable duration
       await new Promise((resolve) => setTimeout(resolve, 5));
 
       res.emit("finish");
       await new Promise((resolve) => setTimeout(resolve, 10));
+      await currentLogger.flush();
 
       // Should have at least 2 info calls (start and end)
       expect(infoSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -159,9 +173,9 @@ describe("middleware", () => {
     });
 
     it("should include request ID from headers", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
+      currentLogger = logger({ serviceName: "test", pretty: false });
       const middleware = createRequestLogger({
-        logger: log,
+        logger: currentLogger,
         startLevel: "info",
       });
 
@@ -171,6 +185,7 @@ describe("middleware", () => {
       const res = createMockResponse();
 
       middleware(req, res, () => {});
+      await currentLogger.flush();
 
       const loggedMessage = infoSpy.mock.calls[0][0] as string;
       const parsed = JSON.parse(loggedMessage);
@@ -180,15 +195,15 @@ describe("middleware", () => {
 
   describe("createTimingMiddleware", () => {
     it("should create middleware function", () => {
-      const log = logger({ serviceName: "test" });
-      const middleware = createTimingMiddleware({ logger: log });
+      currentLogger = logger({ serviceName: "test" });
+      const middleware = createTimingMiddleware({ logger: currentLogger });
       expect(typeof middleware).toBe("function");
     });
 
     it("should warn for slow requests", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
+      currentLogger = logger({ serviceName: "test", pretty: false });
       const middleware = createTimingMiddleware({
-        logger: log,
+        logger: currentLogger,
         warnThreshold: 1, // 1ms threshold to trigger warning
       });
 
@@ -202,6 +217,7 @@ describe("middleware", () => {
 
       res.emit("finish");
       await new Promise((resolve) => setTimeout(resolve, 10));
+      await currentLogger.flush();
 
       expect(warnSpy).toHaveBeenCalled();
       const loggedMessage = warnSpy.mock.calls[0][0] as string;
@@ -209,9 +225,9 @@ describe("middleware", () => {
     });
 
     it("should not warn for fast requests", async () => {
-      const log = logger({ serviceName: "test" });
+      currentLogger = logger({ serviceName: "test" });
       const middleware = createTimingMiddleware({
-        logger: log,
+        logger: currentLogger,
         warnThreshold: 10000, // High threshold
       });
 
@@ -222,14 +238,15 @@ describe("middleware", () => {
       res.emit("finish");
 
       await new Promise((resolve) => setTimeout(resolve, 10));
+      await currentLogger.flush();
 
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
-    it("should skip when skip function returns true", () => {
-      const log = logger({ serviceName: "test" });
+    it("should skip when skip function returns true", async () => {
+      currentLogger = logger({ serviceName: "test" });
       const middleware = createTimingMiddleware({
-        logger: log,
+        logger: currentLogger,
         warnThreshold: 1,
         skip: () => true,
       });
@@ -248,8 +265,8 @@ describe("middleware", () => {
 
   describe("attachLogger", () => {
     it("should attach child logger to request", () => {
-      const log = logger({ serviceName: "test" });
-      const middleware = attachLogger({ logger: log });
+      currentLogger = logger({ serviceName: "test" });
+      const middleware = attachLogger({ logger: currentLogger });
 
       const req = createMockRequest() as Record<string, unknown>;
       const res = createMockResponse();
@@ -261,13 +278,13 @@ describe("middleware", () => {
 
       expect(nextCalled).toBe(true);
       expect(req.log).toBeDefined();
-      expect(typeof (req.log as { info: unknown }).info).toBe("function");
+      expect(typeof (req.log as Logger).info).toBe("function");
     });
 
     it("should use custom property name", () => {
-      const log = logger({ serviceName: "test" });
+      currentLogger = logger({ serviceName: "test" });
       const middleware = attachLogger({
-        logger: log,
+        logger: currentLogger,
         property: "logger",
       });
 
@@ -281,9 +298,9 @@ describe("middleware", () => {
     });
 
     it("should include custom context in child logger", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
+      currentLogger = logger({ serviceName: "test", pretty: false });
       const middleware = attachLogger({
-        logger: log,
+        logger: currentLogger,
         getContext: () => ({
           userId: "user-123",
         }),
@@ -294,9 +311,9 @@ describe("middleware", () => {
 
       middleware(req, res, () => {});
 
-      await (req.log as { info: (msg: string) => Promise<void> }).info(
-        "Test message",
-      );
+      const reqLogger = req.log as Logger;
+      reqLogger.info("Test message");
+      await reqLogger.flush();
 
       const loggedMessage = infoSpy.mock.calls[0][0] as string;
       const parsed = JSON.parse(loggedMessage);
@@ -304,8 +321,8 @@ describe("middleware", () => {
     });
 
     it("should include request ID from headers", async () => {
-      const log = logger({ serviceName: "test", pretty: false });
-      const middleware = attachLogger({ logger: log });
+      currentLogger = logger({ serviceName: "test", pretty: false });
+      const middleware = attachLogger({ logger: currentLogger });
 
       const req = createMockRequest({
         headers: { "x-request-id": "req-header-123" },
@@ -314,9 +331,9 @@ describe("middleware", () => {
 
       middleware(req, res, () => {});
 
-      await (req.log as { info: (msg: string) => Promise<void> }).info(
-        "Test message",
-      );
+      const reqLogger = req.log as Logger;
+      reqLogger.info("Test message");
+      await reqLogger.flush();
 
       const loggedMessage = infoSpy.mock.calls[0][0] as string;
       const parsed = JSON.parse(loggedMessage);

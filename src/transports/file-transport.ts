@@ -157,8 +157,6 @@ export const createFileTransport = (options: FileTransportOptions = {}) => {
           }
           await fs.symlink(basename(filePath), symlinkPath);
         }
-
-        console.log(`[FILE] Rotated log file to: ${rotatedFile}`);
       } catch (error) {
         handleTransportError(error, transportName, true);
       }

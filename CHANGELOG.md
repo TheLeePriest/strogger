@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2025-02-02
+
+### Breaking Changes
+
+- **Unified data parameter**: Log methods now take `(message, data?)` instead of `(message, context?, error?, metadata?)`. Errors go in data as `{ err: error }`.
+- **Synchronous logging**: Log methods now return `void` instead of `Promise<void>`. Use `flush()` to wait for logs to be written.
+- **Removed convenience methods**: `logFunctionStart`, `logFunctionEnd`, `logDatabaseOperation`, `logApiRequest` removed from core API. Use standard logging with descriptive messages instead.
+
+### Added
+
+- **Shorthand transport configs**: Configure transports directly in `logger()` options:
+  ```typescript
+  logger({
+    serviceName: 'my-app',
+    datadog: true,                    // Uses DATADOG_API_KEY env var
+    cloudwatch: { logGroupName: '/app/logs' },
+    file: true,
+  })
+  ```
+- **String log levels**: `logger({ level: 'debug' })` and `log.setLevel('warn')` now work alongside enum values.
+- **Auto-registered exit handlers**: Logs are automatically flushed on SIGINT, SIGTERM, and beforeExit.
+- **Queue-based processing**: Logs are queued and processed via `queueMicrotask` for optimal performance (~1.4M logs/sec).
+- **Lazy transport initialization**: Transport flush timers start on first log, not at creation time.
+- **Performance benchmarks**: Added `benchmarks/throughput.ts`.
+- **CONTRIBUTING.md**: Added contribution guidelines.
+
+### Changed
+
+- **Lazy default instance**: The `strogger` default export is now lazily initialized via Proxy.
+- **Better SDK error messages**: CloudWatch transport now gives helpful error when AWS SDK is not installed.
+- **Pre-compiled redaction patterns**: Redaction patterns are compiled once for better performance.
+
+### Fixed
+
+- Transport errors no longer use `console.log` directly - they go through the error handler.
+- Single transport path optimization (skips `Promise.allSettled` overhead).
+
 ## [3.0.2] - 2025-02-01
 
 ### Added

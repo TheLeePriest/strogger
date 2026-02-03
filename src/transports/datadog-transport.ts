@@ -137,12 +137,14 @@ export const createDataDogTransport = (
       }, flushInterval);
     };
 
-    // Start the flush timer
-    startFlushTimer();
+    // Timer starts lazily on first log, not immediately
 
     return {
       log: async (entry: LogEntry) => {
         if (!shouldLog(entry.level, minLevel)) return;
+
+        // Start flush timer lazily on first log
+        startFlushTimer();
 
         batch.push(entry);
 

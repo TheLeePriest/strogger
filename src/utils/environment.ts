@@ -4,10 +4,6 @@ const LoggerEnvironmentSchema = z.object({
   LOG_LEVEL: z.enum(["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]).optional(),
   STAGE: z.enum(["dev", "prod", "test"]).default("dev"),
   SERVICE_NAME: z.string().optional(),
-  ENABLE_STRUCTURED_LOGGING: z
-    .string()
-    .transform((val: string) => val === "true")
-    .optional(),
   CLOUDWATCH_LOG_GROUP: z.string().optional(),
   CLOUDWATCH_LOG_STREAM: z.string().optional(),
   AWS_REGION: z.string().optional(),
@@ -22,7 +18,6 @@ export const getEnvironment = (
   isDevelopment: boolean;
   logLevel: string | undefined;
   serviceName: string | undefined;
-  enableStructuredLogging: boolean;
   stage: string;
 } => {
   let config: LoggerEnvironment;
@@ -43,7 +38,6 @@ export const getEnvironment = (
     isDevelopment: config.STAGE === "dev",
     logLevel: config.LOG_LEVEL ?? undefined,
     serviceName: config.SERVICE_NAME ?? undefined,
-    enableStructuredLogging: config.ENABLE_STRUCTURED_LOGGING ?? true,
     stage: config.STAGE,
   };
 };

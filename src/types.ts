@@ -7,6 +7,20 @@ export enum LogLevel {
 }
 
 /**
+ * Log level input - accepts both enum values and string names.
+ * Allows `LogLevel.DEBUG` or `'debug'` interchangeably.
+ */
+export type LogLevelInput = LogLevel | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+/**
+ * Normalize a LogLevelInput to a LogLevel enum value.
+ */
+export const normalizeLogLevel = (level: LogLevelInput): LogLevel => {
+  if (typeof level === 'number') return level;
+  return parseLogLevel(level) ?? LogLevel.INFO;
+};
+
+/**
  * Serialized error object for structured logging.
  * Unlike the Error class, this is a plain object safe for JSON serialization.
  */
@@ -69,6 +83,9 @@ export const logLevelToString = (level: LogLevel): string => {
   }
 };
 
+/**
+ * Standard context fields for request tracing and correlation.
+ */
 export interface LogContext {
   requestId?: string;
   userId?: string;
@@ -81,8 +98,23 @@ export interface LogContext {
   spanId?: string;
   parentSpanId?: string;
   sessionId?: string;
-  instanceId?: string; // Logger instance identifier
+  instanceId?: string;
   [key: string]: unknown;
+}
+
+/**
+ * Data object passed to log methods.
+ * Combines context, error, and any additional fields.
+ *
+ * @example
+ * ```typescript
+ * log.info('User logged in', { userId: '123', requestId: 'req-456' });
+ * log.error('Failed', { err: new Error('oops'), userId: '123' });
+ * ```
+ */
+export interface LogData extends LogContext {
+  /** Error object to be serialized with the log entry */
+  err?: Error;
 }
 
 export interface LogEntry {
@@ -102,11 +134,28 @@ export type TransportErrorHandler = (
   transportName?: string,
 ) => void;
 
+/**
+ * Queue configuration for async log processing.
+ */
+export interface QueueConfig {
+  /** Maximum entries before backpressure (default: 10000) */
+  maxSize?: number;
+  /** Maximum estimated bytes before backpressure (default: 10MB) */
+  maxBytes?: number;
+  /** Behavior when queue is full (default: 'drop-oldest') */
+  overflowBehavior?: 'drop-oldest' | 'drop-newest' | 'warn';
+  /** Callback when backpressure is triggered */
+  onBackpressure?: (stats: { queueSize: number; droppedCount: number }) => void;
+  /** Fallback processing interval in ms (default: 100) */
+  fallbackInterval?: number;
+  /** Maximum logs to process per batch (default: 100) */
+  batchSize?: number;
+}
+
 export interface LoggerConfig {
-  level?: LogLevel;
+  level?: LogLevelInput;
   serviceName?: string | undefined;
   stage?: string | undefined;
-  enableStructuredLogging?: boolean;
   includeTimestamp?: boolean;
   includeLogLevel?: boolean;
   customFields?: Record<string, unknown>;
@@ -125,6 +174,8 @@ export interface LoggerConfig {
   instanceId?: string;
   /** Error handler called when a transport fails. Defaults to console.error. */
   onError?: TransportErrorHandler;
+  /** Queue configuration for async processing */
+  queue?: QueueConfig;
 }
 
 export interface Transport {
@@ -157,69 +208,38 @@ export interface LoggerOptions {
 
 /**
  * Logger instance returned by createLogger.
+ *
+ * All log methods are synchronous (fire-and-forget). Use flush() or shutdown()
+ * to wait for pending logs to be written.
+ *
+ * @example
+ * ```typescript
+ * const log = logger({ serviceName: 'my-app' });
+ *
+ * // Simple logging
+ * log.info('Hello world');
+ *
+ * // With data
+ * log.info('User action', { userId: '123', action: 'login' });
+ *
+ * // With error
+ * log.error('Failed', { err: new Error('oops'), userId: '123' });
+ *
+ * // Wait for logs before exit
+ * await log.shutdown();
+ * ```
  */
 export interface Logger {
   /** Log a debug message */
-  debug(
-    message: string,
-    context?: LogContext,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
+  debug(message: string, data?: LogData): void;
   /** Log an info message */
-  info(
-    message: string,
-    context?: LogContext,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
+  info(message: string, data?: LogData): void;
   /** Log a warning message */
-  warn(
-    message: string,
-    context?: LogContext,
-    error?: Error,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
+  warn(message: string, data?: LogData): void;
   /** Log an error message */
-  error(
-    message: string,
-    context?: LogContext,
-    error?: Error,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
+  error(message: string, data?: LogData): void;
   /** Log a fatal message */
-  fatal(
-    message: string,
-    context?: LogContext,
-    error?: Error,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
-  /** Log the start of a function */
-  logFunctionStart(
-    functionName: string,
-    context?: LogContext,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
-  /** Log the end of a function with duration */
-  logFunctionEnd(
-    functionName: string,
-    duration: number,
-    context?: LogContext,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
-  /** Log a database operation */
-  logDatabaseOperation(
-    operation: string,
-    table: string,
-    context?: LogContext,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
-  /** Log an API request */
-  logApiRequest(
-    method: string,
-    path: string,
-    statusCode: number,
-    context?: LogContext,
-    metadata?: Record<string, unknown>,
-  ): Promise<void>;
+  fatal(message: string, data?: LogData): void;
   /**
    * Create a child logger with additional context.
    * The child logger inherits all settings from the parent but adds the given context to every log.
@@ -232,8 +252,8 @@ export interface Logger {
    * ```
    */
   child(context: LogContext): Logger;
-  /** Set the minimum log level */
-  setLevel(level: LogLevel): void;
+  /** Set the minimum log level (accepts string or enum) */
+  setLevel(level: LogLevelInput): void;
   /** Get the current minimum log level */
   getLevel(): LogLevel;
   /** Get the unique instance ID of this logger */
@@ -261,13 +281,77 @@ export interface Logger {
         }
       | undefined;
   };
-  /** Flush all transports */
+  /** Flush all pending logs to transports */
   flush(): Promise<void>;
   /** Get batch statistics for all transports */
   getBatchStats(): Array<Record<string, unknown>>;
   /** Gracefully shutdown the logger, flushing all pending logs */
   shutdown(): Promise<void>;
 }
+
+/**
+ * Shorthand configuration for DataDog transport.
+ * Set to `true` to use environment variables, or pass options.
+ */
+export type DataDogShorthand = boolean | {
+  apiKey?: string;
+  serviceName?: string;
+  region?: 'us' | 'eu';
+  tags?: string[];
+};
+
+/**
+ * Shorthand configuration for CloudWatch transport.
+ * Requires logGroupName (no boolean shorthand since it's required).
+ */
+export type CloudWatchShorthand = {
+  logGroupName: string;
+  logStreamName?: string;
+  region?: string;
+};
+
+/**
+ * Shorthand configuration for Splunk transport.
+ * Set to `true` to use environment variables, or pass options.
+ */
+export type SplunkShorthand = boolean | {
+  hecUrl?: string;
+  hecToken?: string;
+  source?: string;
+  sourcetype?: string;
+  index?: string;
+};
+
+/**
+ * Shorthand configuration for Elasticsearch transport.
+ * Set to `true` to use environment variables, or pass options.
+ */
+export type ElasticsearchShorthand = boolean | {
+  url?: string;
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  index?: string;
+};
+
+/**
+ * Shorthand configuration for New Relic transport.
+ * Set to `true` to use environment variables, or pass options.
+ */
+export type NewRelicShorthand = boolean | {
+  apiKey?: string;
+  accountId?: string;
+  region?: string;
+};
+
+/**
+ * Shorthand configuration for file transport.
+ */
+export type FileShorthand = boolean | {
+  path?: string;
+  maxSize?: number;
+  maxFiles?: number;
+};
 
 /**
  * Simplified options for createLogger.
@@ -278,12 +362,68 @@ export interface SimpleLoggerOptions {
   serviceName?: string;
   /** Environment stage (dev, staging, prod) */
   stage?: string;
-  /** Minimum log level. Defaults to DEBUG in dev, INFO in prod */
-  level?: LogLevel;
+  /** Minimum log level. Defaults to DEBUG in dev, INFO in prod. Accepts string or enum. */
+  level?: LogLevelInput;
   /** Use pretty printing for console output. Defaults to true in dev */
   pretty?: boolean;
   /** Additional transports beyond the default console transport */
   transports?: Transport[];
   /** Error handler for transport failures */
   onError?: TransportErrorHandler;
+
+  // ============================================================================
+  // SHORTHAND TRANSPORT CONFIGS
+  // ============================================================================
+
+  /**
+   * DataDog transport. Set to `true` to use DATADOG_API_KEY env var,
+   * or pass options object.
+   * @example
+   * datadog: true
+   * datadog: { region: 'eu' }
+   */
+  datadog?: DataDogShorthand;
+
+  /**
+   * AWS CloudWatch transport. Requires logGroupName.
+   * @example
+   * cloudwatch: { logGroupName: '/app/logs' }
+   */
+  cloudwatch?: CloudWatchShorthand;
+
+  /**
+   * Splunk HEC transport. Set to `true` to use SPLUNK_HEC_URL and
+   * SPLUNK_HEC_TOKEN env vars, or pass options object.
+   * @example
+   * splunk: true
+   * splunk: { index: 'main' }
+   */
+  splunk?: SplunkShorthand;
+
+  /**
+   * Elasticsearch transport. Set to `true` to use env vars,
+   * or pass options object.
+   * @example
+   * elasticsearch: true
+   * elasticsearch: { url: 'http://localhost:9200' }
+   */
+  elasticsearch?: ElasticsearchShorthand;
+
+  /**
+   * New Relic transport. Set to `true` to use NEW_RELIC_LICENSE_KEY
+   * and NEW_RELIC_ACCOUNT_ID env vars, or pass options object.
+   * @example
+   * newrelic: true
+   * newrelic: { region: 'eu' }
+   */
+  newrelic?: NewRelicShorthand;
+
+  /**
+   * File transport. Set to `true` for default file logging,
+   * or pass options object.
+   * @example
+   * file: true
+   * file: { path: './logs/app.log', maxSize: 10485760 }
+   */
+  file?: FileShorthand;
 }

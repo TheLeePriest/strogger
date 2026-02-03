@@ -7,7 +7,6 @@ describe("getEnvironment", () => {
     process.env.LOG_LEVEL = undefined;
     process.env.STAGE = undefined;
     process.env.SERVICE_NAME = undefined;
-    process.env.ENABLE_STRUCTURED_LOGGING = undefined;
     process.env.CLOUDWATCH_LOG_GROUP = undefined;
     process.env.CLOUDWATCH_LOG_STREAM = undefined;
     process.env.AWS_REGION = undefined;
@@ -21,7 +20,6 @@ describe("getEnvironment", () => {
     expect(env.isDevelopment).toBe(true);
     expect(env.logLevel).toBeUndefined();
     expect(env.serviceName).toBeUndefined();
-    expect(env.enableStructuredLogging).toBe(true);
     expect(env.stage).toBe("dev");
   });
 
@@ -29,7 +27,6 @@ describe("getEnvironment", () => {
     process.env.LOG_LEVEL = "INFO";
     process.env.STAGE = "prod";
     process.env.SERVICE_NAME = "test-service";
-    process.env.ENABLE_STRUCTURED_LOGGING = "false";
     process.env.CLOUDWATCH_LOG_GROUP = "/aws/lambda/test";
     process.env.CLOUDWATCH_LOG_STREAM = "test-stream";
     process.env.AWS_REGION = "us-east-1";
@@ -39,7 +36,6 @@ describe("getEnvironment", () => {
     expect(env.LOG_LEVEL).toBe("INFO");
     expect(env.STAGE).toBe("prod");
     expect(env.SERVICE_NAME).toBe("test-service");
-    expect(env.enableStructuredLogging).toBe(false);
     expect(env.CLOUDWATCH_LOG_GROUP).toBe("/aws/lambda/test");
     expect(env.CLOUDWATCH_LOG_STREAM).toBe("test-stream");
     expect(env.AWS_REGION).toBe("us-east-1");
@@ -122,17 +118,4 @@ describe("getEnvironment", () => {
     expect(env.isProduction).toBe(false);
   });
 
-  it("should handle ENABLE_STRUCTURED_LOGGING boolean conversion", () => {
-    process.env.ENABLE_STRUCTURED_LOGGING = "true";
-    let env = getEnvironment();
-    expect(env.enableStructuredLogging).toBe(true);
-
-    process.env.ENABLE_STRUCTURED_LOGGING = "false";
-    env = getEnvironment();
-    expect(env.enableStructuredLogging).toBe(false);
-
-    process.env.ENABLE_STRUCTURED_LOGGING = undefined;
-    env = getEnvironment();
-    expect(env.enableStructuredLogging).toBe(true); // Default value
-  });
 });

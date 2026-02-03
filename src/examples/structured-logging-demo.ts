@@ -17,8 +17,6 @@ const structuredLogger = createLogger({
   config: {
     serviceName: "structured-logging-demo",
     stage: env.stage,
-    // Structured logging is enabled by default
-    enableStructuredLogging: true,
   },
   transports: [createConsoleTransport({ formatter, level: LogLevel.DEBUG })],
   formatter,
@@ -51,15 +49,12 @@ const demonstrateBasicStructuredLogging = () => {
     timestamp: new Date().toISOString(),
   });
 
-  structuredLogger.error(
-    "Database connection failed",
-    {
-      database: "primary",
-      retryAttempts: 3,
-      errorCode: "ECONNREFUSED",
-    },
-    new Error("Connection timeout after 30 seconds"),
-  );
+  structuredLogger.error("Database connection failed", {
+    database: "primary",
+    retryAttempts: 3,
+    errorCode: "ECONNREFUSED",
+    err: new Error("Connection timeout after 30 seconds"),
+  });
 };
 
 // Example 2: Structured Logging with Correlation
@@ -135,7 +130,8 @@ const demonstratePerformanceStructuredLogging = () => {
   const startTime = Date.now();
 
   // Function execution with structured timing
-  structuredLogger.logFunctionStart("processOrder", {
+  structuredLogger.info("Function processOrder started", {
+    functionName: "processOrder",
     orderId: "order-999",
     items: 5,
     customerTier: "premium",
@@ -145,7 +141,9 @@ const demonstratePerformanceStructuredLogging = () => {
   setTimeout(() => {
     const duration = Date.now() - startTime;
 
-    structuredLogger.logFunctionEnd("processOrder", duration, {
+    structuredLogger.info("Function processOrder completed", {
+      functionName: "processOrder",
+      duration,
       orderId: "order-999",
       success: true,
       itemsProcessed: 5,
@@ -170,20 +168,17 @@ const demonstrateErrorStructuredLogging = () => {
     // Simulate an error
     throw new Error("Database query timeout");
   } catch (error) {
-    structuredLogger.error(
-      "Database operation failed",
-      {
-        operation: "SELECT",
-        table: "users",
-        query: "SELECT * FROM users WHERE email = ?",
-        parameters: ["user@example.com"],
-        timeout: 5000,
-        retryAttempt: 2,
-        database: "primary",
-        connectionPool: "pool-1",
-      },
-      error as Error,
-    );
+    structuredLogger.error("Database operation failed", {
+      operation: "SELECT",
+      table: "users",
+      query: "SELECT * FROM users WHERE email = ?",
+      parameters: ["user@example.com"],
+      timeout: 5000,
+      retryAttempt: 2,
+      database: "primary",
+      connectionPool: "pool-1",
+      err: error as Error,
+    });
 
     // Error context for debugging
     structuredLogger.debug("Error context", {

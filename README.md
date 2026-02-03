@@ -21,7 +21,10 @@ const log = logger({ serviceName: 'my-app' });
 
 log.info('Application started');
 log.info('User logged in', { userId: 'user-123' });
-log.error('Something failed', { orderId: 'order-456' }, new Error('Database timeout'));
+log.error('Something failed', { orderId: 'order-456', err: new Error('Database timeout') });
+
+// Before exit, flush pending logs
+await log.flush();
 ```
 
 Or use the pre-configured default logger:
@@ -154,7 +157,7 @@ The default redactor handles: emails, credit cards, SSNs, API keys, Bearer/Basic
 log.debug('Detailed debugging info');
 log.info('General information');
 log.warn('Warning message');
-log.error('Error occurred', {}, new Error('Something broke'));
+log.error('Error occurred', { err: new Error('Something broke') });
 log.fatal('Critical failure');
 ```
 
@@ -168,7 +171,8 @@ LOG_LEVEL=info   # Default in production
 ```typescript
 import { logger, LogLevel } from 'strogger';
 
-const log = logger({ level: LogLevel.DEBUG });
+const log = logger({ level: 'debug' });      // String (recommended)
+const log2 = logger({ level: LogLevel.DEBUG }); // Enum also works
 ```
 
 ## Configuration
@@ -225,7 +229,42 @@ const log = createLogger({
 
 ## Transports
 
-Send logs to multiple destinations:
+Send logs to multiple destinations using shorthand configs:
+
+```typescript
+import { logger } from 'strogger';
+
+// Simple - use environment variables for credentials
+const log = logger({
+  serviceName: 'my-app',
+  datadog: true,                              // Uses DATADOG_API_KEY env var
+  cloudwatch: { logGroupName: '/app/logs' },  // CloudWatch requires logGroupName
+  file: true,                                 // Local file backup
+});
+
+// With explicit options
+const log2 = logger({
+  serviceName: 'my-app',
+  datadog: { region: 'eu', tags: ['env:prod'] },
+  newrelic: { region: 'eu' },
+  elasticsearch: { url: 'https://es.example.com:9200' },
+});
+```
+
+**Shorthand options:**
+
+| Transport | Shorthand | Environment Variables |
+|-----------|-----------|----------------------|
+| DataDog | `datadog: true` | `DATADOG_API_KEY`, `DD_SERVICE` |
+| CloudWatch | `cloudwatch: { logGroupName }` | `AWS_REGION` |
+| Splunk | `splunk: true` | `SPLUNK_HEC_URL`, `SPLUNK_HEC_TOKEN` |
+| Elasticsearch | `elasticsearch: true` | `ELASTICSEARCH_URL`, `ELASTICSEARCH_API_KEY` |
+| New Relic | `newrelic: true` | `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID` |
+| File | `file: true` | - |
+
+### Advanced Transport Setup
+
+For full control, use `createLogger` with explicit transports:
 
 ```typescript
 import {
@@ -260,28 +299,16 @@ const log = createLogger({
 - `createElasticsearchTransport` - Elasticsearch
 - `createNewRelicTransport` - New Relic
 
-## Convenience Methods
-
-```typescript
-// Function timing
-log.logFunctionStart('processOrder');
-// ... do work ...
-log.logFunctionEnd('processOrder', 150); // duration in ms
-
-// Database operations
-log.logDatabaseOperation('SELECT', 'users');
-
-// API requests
-log.logApiRequest('POST', '/api/orders', 201);
-```
-
 ## Graceful Shutdown
 
+Strogger automatically registers exit handlers to flush logs, but for explicit control:
+
 ```typescript
-process.on('SIGTERM', async () => {
-  await log.shutdown(); // Flush all pending logs
-  process.exit(0);
-});
+// Flush pending logs (waits for completion)
+await log.flush();
+
+// Full shutdown (flush + close transports)
+await log.shutdown();
 ```
 
 ## TypeScript
@@ -324,11 +351,11 @@ log.info('Step 2', { requestId, userId });
 ### Use Appropriate Log Levels
 
 ```typescript
-log.debug('Query executed', { sql, params });     // Development debugging
-log.info('User registered', { userId });           // Normal operations
-log.warn('Rate limit approaching', { current });   // Potential issues
-log.error('Payment failed', { orderId }, error);   // Errors that need attention
-log.fatal('Database connection lost');             // Critical failures
+log.debug('Query executed', { sql, params });         // Development debugging
+log.info('User registered', { userId });              // Normal operations
+log.warn('Rate limit approaching', { current });      // Potential issues
+log.error('Payment failed', { orderId, err: error }); // Errors that need attention
+log.fatal('Database connection lost');                // Critical failures
 ```
 
 ## Platform Compatibility
@@ -356,14 +383,78 @@ if (!hasAsyncLocalStorage()) {
 }
 ```
 
-## API Reference
+## Performance
 
-See the [full documentation](docs/api-reference.md) for detailed API reference and advanced features:
+Log calls are synchronous and non-blocking - they return immediately while logs are processed in the background via microtasks. This means:
 
-- [API Reference](docs/api-reference.md) - Complete function and type documentation
-- [Advanced Features](docs/advanced-features.md) - Sampling, rate limiting, batching, hooks
-- [Error Handling](docs/error-handling.md) - Error handling strategies
-- [Third-Party Integrations](docs/third-party-integrations.md) - CloudWatch, DataDog, Splunk, etc.
+- Logging never blocks your application
+- Logs are batched for efficient transport writes
+- ~1.4 million logs/second throughput (see `benchmarks/throughput.ts`)
+
+## Migration Guide (v3 → v4)
+
+### Error Logging
+
+```typescript
+// v3 - error as separate parameter
+log.error('failed', { requestId }, error);
+
+// v4 - error in data object as 'err'
+log.error('failed', { requestId, err: error });
+```
+
+### String Log Levels
+
+```typescript
+// v3 - enum only
+log.setLevel(LogLevel.DEBUG);
+
+// v4 - string or enum
+log.setLevel('debug');
+log.setLevel(LogLevel.DEBUG);  // still works
+```
+
+### Async Handling
+
+```typescript
+// v3 - await each log (optional)
+await log.info('message');
+
+// v4 - fire and forget, flush when needed
+log.info('message');
+await log.flush();  // only when you need to wait
+```
+
+### Convenience Methods Removed
+
+The built-in convenience methods (`logFunctionStart`, `logFunctionEnd`, `logDatabaseOperation`, `logApiRequest`) have been removed. Use standard logging with descriptive messages instead:
+
+```typescript
+// v3
+log.logFunctionStart('processOrder');
+log.logFunctionEnd('processOrder', 150);
+
+// v4
+log.info('Function processOrder started', { functionName: 'processOrder' });
+log.info('Function processOrder completed', { functionName: 'processOrder', duration: 150 });
+```
+
+## Error Handling
+
+Transport errors (network failures, missing credentials) are handled gracefully - they won't crash your application. By default, errors are logged to console. Customize with:
+
+```typescript
+const log = logger({
+  serviceName: 'my-app',
+  datadog: true,
+  onError: (error, transportName) => {
+    // Custom error handling (e.g., send to error tracking service)
+    console.error(`[${transportName}] ${error.message}`);
+  },
+});
+```
+
+If a transport's required credentials are missing (e.g., `datadog: true` without `DATADOG_API_KEY`), the logger will throw at creation time with a helpful error message.
 
 ## License
 

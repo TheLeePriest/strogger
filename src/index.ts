@@ -7,19 +7,29 @@ export { createLogger, logger, strogger } from "./logger";
 export type { CreateLoggerOptions } from "./logger";
 
 // Log levels
-export { LogLevel, parseLogLevel, logLevelToString } from "./types";
+export { LogLevel, parseLogLevel, logLevelToString, normalizeLogLevel } from "./types";
 
 // Core types
 export type {
   Logger,
   LogEntry,
   LogContext,
+  LogData,
   LoggerConfig,
   SimpleLoggerOptions,
   Transport,
   Formatter,
   SerializedError,
   TransportErrorHandler,
+  LogLevelInput,
+  QueueConfig,
+  // Shorthand transport config types
+  DataDogShorthand,
+  CloudWatchShorthand,
+  SplunkShorthand,
+  ElasticsearchShorthand,
+  NewRelicShorthand,
+  FileShorthand,
 } from "./types";
 
 // ============================================================================

@@ -143,15 +143,21 @@ export const createRedactor = (
       : [...DEFAULT_SENSITIVE_FIELDS, ...additionalFields],
   );
 
-  const redactionPatterns = replaceDefaults
+  const sourcePatterns = replaceDefaults
     ? patterns
     : [...DEFAULT_REDACTION_PATTERNS, ...additionalPatterns];
 
+  // Pre-compile patterns once for reuse (avoid creating RegExp on every call)
+  const compiledPatterns = sourcePatterns.map(({ pattern, replacement }) => ({
+    regex: new RegExp(pattern.source, pattern.flags),
+    replacement,
+  }));
+
   const redactString = (str: string): string => {
     let result = str;
-    for (const { pattern, replacement } of redactionPatterns) {
-      // Create a new RegExp to reset lastIndex for global patterns
-      const regex = new RegExp(pattern.source, pattern.flags);
+    for (const { regex, replacement } of compiledPatterns) {
+      // Reset lastIndex for global patterns to ensure consistent matching
+      regex.lastIndex = 0;
       result = result.replace(regex, replacement);
     }
     return result;

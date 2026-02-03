@@ -91,6 +91,11 @@ export const ERROR_MESSAGES = {
     message: "Failed to send logs to CloudWatch",
     solution: "Check your AWS credentials, region, and network connectivity",
   },
+  CLOUDWATCH_SDK_NOT_FOUND: {
+    message: "AWS SDK for CloudWatch Logs not installed",
+    solution: "Install the AWS SDK: npm install @aws-sdk/client-cloudwatch-logs",
+    example: "npm install @aws-sdk/client-cloudwatch-logs",
+  },
 
   // General transport errors
   TRANSPORT_INITIALIZATION_FAILED: {
@@ -166,6 +171,10 @@ export const ERROR_MESSAGES = {
     message: "Failed to send logs to Elasticsearch",
     solution:
       "Check your connection URL, authentication, and network connectivity",
+  },
+  ELASTICSEARCH_PARTIAL_ERROR: {
+    message: "Some documents failed to index in Elasticsearch",
+    solution: "Check document structure and index mappings",
   },
 } as const;
 

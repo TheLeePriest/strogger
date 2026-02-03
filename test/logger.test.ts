@@ -5,7 +5,7 @@ import {
   getEnvironment,
 } from "../src/index";
 import { createLogger } from "../src/logger";
-import { LogEntry, LogLevel } from "../src/types";
+import { LogLevel } from "../src/types";
 
 describe("createLogger", () => {
   let logger: ReturnType<typeof createLogger>;
@@ -31,7 +31,10 @@ describe("createLogger", () => {
     return spy.mock.calls[0][0] as string;
   };
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (logger) {
+      await logger.shutdown();
+    }
     vi.restoreAllMocks();
     process.env.LOG_LEVEL = undefined;
   });
@@ -60,6 +63,8 @@ describe("createLogger", () => {
       expect(logger).toHaveProperty("fatal");
       expect(logger).toHaveProperty("setLevel");
       expect(logger).toHaveProperty("getLevel");
+      expect(logger).toHaveProperty("flush");
+      expect(logger).toHaveProperty("shutdown");
       expect(typeof logger.debug).toBe("function");
       expect(typeof logger.info).toBe("function");
       expect(typeof logger.warn).toBe("function");
@@ -68,7 +73,8 @@ describe("createLogger", () => {
     });
 
     it("should log info messages", async () => {
-      await logger.info("Test info message");
+      logger.info("Test info message");
+      await logger.flush();
 
       expect(infoSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test info message"),
@@ -76,7 +82,8 @@ describe("createLogger", () => {
     });
 
     it("should log debug messages", async () => {
-      await logger.debug("Test debug message");
+      logger.debug("Test debug message");
+      await logger.flush();
 
       expect(debugSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test debug message"),
@@ -84,7 +91,8 @@ describe("createLogger", () => {
     });
 
     it("should log warn messages", async () => {
-      await logger.warn("Test warning message");
+      logger.warn("Test warning message");
+      await logger.flush();
 
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test warning message"),
@@ -92,7 +100,8 @@ describe("createLogger", () => {
     });
 
     it("should log error messages", async () => {
-      await logger.error("Test error message");
+      logger.error("Test error message");
+      await logger.flush();
 
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test error message"),
@@ -100,7 +109,8 @@ describe("createLogger", () => {
     });
 
     it("should log fatal messages", async () => {
-      await logger.fatal("Test fatal message");
+      logger.fatal("Test fatal message");
+      await logger.flush();
 
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test fatal message"),
@@ -108,7 +118,7 @@ describe("createLogger", () => {
     });
   });
 
-  describe("context and metadata", () => {
+  describe("data parameter", () => {
     beforeEach(() => {
       const formatter = createJsonFormatter();
       const transport = createConsoleTransport({
@@ -124,13 +134,12 @@ describe("createLogger", () => {
       });
     });
 
-    it("should include context in log entries", async () => {
-      const context = {
+    it("should include data fields in log entries", async () => {
+      logger.info("Message with data", {
         requestId: "req-123",
         userId: "user-456",
-      };
-
-      await logger.info("Message with context", context);
+      });
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(infoSpy);
       const parsed = JSON.parse(loggedMessage);
@@ -139,28 +148,30 @@ describe("createLogger", () => {
       expect(parsed.userId).toBe("user-456");
     });
 
-    it("should include metadata in log entries", async () => {
-      const context = { requestId: "req-123" };
-      const metadata = {
+    it("should include extra fields in data", async () => {
+      logger.info("Message with extra data", {
+        requestId: "req-123",
         operation: "test",
         duration: 150,
-      };
-
-      await logger.info("Message with metadata", context, metadata);
+      });
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(infoSpy);
       const parsed = JSON.parse(loggedMessage);
 
       expect(parsed.requestId).toBe("req-123");
-      expect(parsed.metadata.operation).toBe("test");
-      expect(parsed.metadata.duration).toBe(150);
+      expect(parsed.operation).toBe("test");
+      expect(parsed.duration).toBe(150);
     });
 
-    it("should handle error objects", async () => {
+    it("should handle error in data object", async () => {
       const error = new Error("Test error");
-      const context = { requestId: "req-123" };
 
-      await logger.error("Error occurred", context, error);
+      logger.error("Error occurred", {
+        requestId: "req-123",
+        err: error,
+      });
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(errorSpy);
       const parsed = JSON.parse(loggedMessage);
@@ -168,94 +179,26 @@ describe("createLogger", () => {
       expect(parsed.error.name).toBe("Error");
       expect(parsed.error.message).toBe("Test error");
       expect(parsed.error.stack).toBe(error.stack);
+      expect(parsed.requestId).toBe("req-123");
     });
 
-    it("should handle error with metadata", async () => {
+    it("should handle error with additional data", async () => {
       const error = new Error("Test error");
-      const context = { requestId: "req-123" };
-      const metadata = { severity: "high" };
 
-      await logger.error("Error occurred", context, error, metadata);
+      logger.error("Error occurred", {
+        requestId: "req-123",
+        err: error,
+        severity: "high",
+      });
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(errorSpy);
       const parsed = JSON.parse(loggedMessage);
 
       expect(parsed.error.name).toBe("Error");
       expect(parsed.error.message).toBe("Test error");
-      expect(parsed.metadata.severity).toBe("high");
-    });
-  });
-
-  describe("convenience methods", () => {
-    beforeEach(() => {
-      const formatter = createJsonFormatter();
-      const transport = createConsoleTransport({
-        formatter,
-        level: LogLevel.DEBUG,
-      });
-
-      logger = createLogger({
-        config: { serviceName: "test-service", level: LogLevel.DEBUG },
-        transports: [transport],
-        formatter,
-        env,
-      });
-    });
-
-    it("should log function start", async () => {
-      const context = { requestId: "req-123" };
-
-      await logger.logFunctionStart("testFunction", context);
-
-      const loggedMessage = getLoggedMessage(infoSpy);
-      const parsed = JSON.parse(loggedMessage);
-
-      expect(parsed.message).toBe("Function testFunction started");
-      expect(parsed.functionName).toBe("testFunction");
       expect(parsed.requestId).toBe("req-123");
-    });
-
-    it("should log function end", async () => {
-      const context = { requestId: "req-123" };
-
-      await logger.logFunctionEnd("testFunction", 150, context);
-
-      const loggedMessage = getLoggedMessage(infoSpy);
-      const parsed = JSON.parse(loggedMessage);
-
-      expect(parsed.message).toBe("Function testFunction completed in 150ms");
-      expect(parsed.functionName).toBe("testFunction");
-      expect(parsed.duration).toBe(150);
-      expect(parsed.requestId).toBe("req-123");
-    });
-
-    it("should log database operations", async () => {
-      const context = { requestId: "req-123" };
-
-      await logger.logDatabaseOperation("SELECT", "users", context);
-
-      const loggedMessage = getLoggedMessage(debugSpy);
-      const parsed = JSON.parse(loggedMessage);
-
-      expect(parsed.message).toBe("Database operation: SELECT on table users");
-      expect(parsed.operation).toBe("SELECT");
-      expect(parsed.table).toBe("users");
-      expect(parsed.requestId).toBe("req-123");
-    });
-
-    it("should log API requests", async () => {
-      const context = { requestId: "req-123" };
-
-      await logger.logApiRequest("POST", "/api/users", 201, context);
-
-      const loggedMessage = getLoggedMessage(infoSpy);
-      const parsed = JSON.parse(loggedMessage);
-
-      expect(parsed.message).toBe("API POST /api/users - 201");
-      expect(parsed.method).toBe("POST");
-      expect(parsed.path).toBe("/api/users");
-      expect(parsed.statusCode).toBe(201);
-      expect(parsed.requestId).toBe("req-123");
+      expect(parsed.severity).toBe("high");
     });
   });
 
@@ -279,20 +222,24 @@ describe("createLogger", () => {
       expect(logger.getLevel()).toBe(LogLevel.DEBUG);
     });
 
-    it("should allow setting log level", () => {
-      expect(logger.getLevel()).toBe(LogLevel.DEBUG);
-      logger.setLevel(LogLevel.DEBUG);
+    it("should allow setting log level with enum", () => {
       expect(logger.getLevel()).toBe(LogLevel.DEBUG);
       logger.setLevel(LogLevel.ERROR);
       expect(logger.getLevel()).toBe(LogLevel.ERROR);
     });
 
+    it("should allow setting log level with string", () => {
+      logger.setLevel("warn");
+      expect(logger.getLevel()).toBe(LogLevel.WARN);
+    });
+
     it("should filter logs based on level", async () => {
       logger.setLevel(LogLevel.WARN);
 
-      await logger.debug("Debug message");
-      await logger.info("Info message");
-      await logger.warn("Warning message");
+      logger.debug("Debug message");
+      logger.info("Info message");
+      logger.warn("Warning message");
+      await logger.flush();
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
@@ -321,7 +268,8 @@ describe("createLogger", () => {
     });
 
     it("should send logs to all transports", async () => {
-      await logger.warn("Test warning");
+      logger.warn("Test warning");
+      await logger.flush();
 
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test warning"),
@@ -329,7 +277,8 @@ describe("createLogger", () => {
     });
 
     it("should respect individual transport levels", async () => {
-      await logger.info("Test info");
+      logger.info("Test info");
+      await logger.flush();
 
       expect(infoSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test info"),
@@ -353,7 +302,8 @@ describe("createLogger", () => {
         env,
       });
 
-      await logger.info("Test message");
+      logger.info("Test message");
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(infoSpy);
       const parsed = JSON.parse(loggedMessage);
@@ -379,7 +329,8 @@ describe("createLogger", () => {
         env,
       });
 
-      await logger.info("Test message");
+      logger.info("Test message");
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(infoSpy);
       const parsed = JSON.parse(loggedMessage);
@@ -401,13 +352,31 @@ describe("createLogger", () => {
         env,
       });
 
-      await logger.info("Test message");
+      logger.info("Test message");
+      await logger.flush();
 
       const loggedMessage = getLoggedMessage(infoSpy);
       const parsed = JSON.parse(loggedMessage);
 
       expect(parsed.timestamp).toBeDefined();
       expect(new Date(parsed.timestamp)).toBeInstanceOf(Date);
+    });
+
+    it("should accept string log level", async () => {
+      const formatter = createJsonFormatter();
+      const transport = createConsoleTransport({
+        formatter,
+        level: LogLevel.DEBUG,
+      });
+
+      logger = createLogger({
+        config: { serviceName: "test-service", level: "debug" },
+        transports: [transport],
+        formatter,
+        env,
+      });
+
+      expect(logger.getLevel()).toBe(LogLevel.DEBUG);
     });
   });
 
@@ -433,21 +402,61 @@ describe("createLogger", () => {
       });
 
       // Should not throw an error
-      await logger.info("Test message");
+      logger.info("Test message");
+      await logger.flush();
 
       // Should log transport error to console via the default error handler
-      // The new format includes a prefix and the error object separately
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Transport error"),
-        expect.objectContaining({
-          message: expect.stringContaining("Transport failed"),
-        }),
+        expect.any(Error),
       );
 
       // Should still log to working transport
       expect(infoSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test message"),
       );
+    });
+  });
+
+  describe("child loggers", () => {
+    beforeEach(() => {
+      const formatter = createJsonFormatter();
+      const transport = createConsoleTransport({
+        formatter,
+        level: LogLevel.DEBUG,
+      });
+
+      logger = createLogger({
+        config: { serviceName: "test-service", level: LogLevel.DEBUG },
+        transports: [transport],
+        formatter,
+        env,
+      });
+    });
+
+    it("should create child with additional context", async () => {
+      const child = logger.child({ requestId: "req-123" });
+
+      child.info("Child message");
+      await child.flush();
+
+      const loggedMessage = getLoggedMessage(infoSpy);
+      const parsed = JSON.parse(loggedMessage);
+
+      expect(parsed.requestId).toBe("req-123");
+    });
+
+    it("should merge child context with log data", async () => {
+      const child = logger.child({ requestId: "req-123" });
+
+      child.info("Child message", { userId: "user-456" });
+      await child.flush();
+
+      const loggedMessage = getLoggedMessage(infoSpy);
+      const parsed = JSON.parse(loggedMessage);
+
+      expect(parsed.requestId).toBe("req-123");
+      expect(parsed.userId).toBe("user-456");
     });
   });
 });

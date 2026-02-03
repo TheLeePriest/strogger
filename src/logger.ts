@@ -3,18 +3,27 @@ import {
   createPrettyFormatter,
 } from "./formatters/json-formatter";
 import { createConsoleTransport } from "./transports/console-transport";
+import { createCloudWatchTransport } from "./transports/cloudwatch-transport";
+import { createDataDogTransport } from "./transports/datadog-transport";
+import { createElasticsearchTransport } from "./transports/elasticsearch-transport";
+import { createFileTransport } from "./transports/file-transport";
+import { createNewRelicTransport } from "./transports/newrelic-transport";
+import { createSplunkTransport } from "./transports/splunk-transport";
 import type {
   Formatter,
   LogContext,
+  LogData,
   LogEntry,
   Logger,
   LoggerConfig,
+  QueueConfig,
   SerializedError,
   SimpleLoggerOptions,
   Transport,
   TransportErrorHandler,
+  LogLevelInput,
 } from "./types";
-import { LogLevel, parseLogLevel } from "./types";
+import { LogLevel, normalizeLogLevel, parseLogLevel } from "./types";
 import { createBatchedTransport } from "./utils/batching";
 import type { BatchedTransport } from "./utils/batching";
 import { getContext } from "./utils/context";
@@ -22,6 +31,73 @@ import { generateLoggerInstanceId } from "./utils/enrichment";
 import { getEnvironment } from "./utils/environment";
 import type { LoggerEnvironment } from "./utils/environment";
 import { createLogFilter } from "./utils/sampling";
+
+// ============================================================================
+// GLOBAL EXIT HANDLING
+// ============================================================================
+
+const loggerShutdownFns: Set<() => Promise<void>> = new Set();
+let exitHandlersRegistered = false;
+
+const registerLoggerForExit = (shutdownFn: () => Promise<void>): void => {
+  loggerShutdownFns.add(shutdownFn);
+
+  if (exitHandlersRegistered) return;
+  exitHandlersRegistered = true;
+
+  const exitHandler = (): void => {
+    // Best effort flush all loggers
+    for (const shutdown of loggerShutdownFns) {
+      shutdown().catch(() => {});
+    }
+  };
+
+  process.on("beforeExit", async () => {
+    for (const shutdown of loggerShutdownFns) {
+      await shutdown();
+    }
+  });
+
+  process.on("SIGINT", () => {
+    exitHandler();
+    // Don't call process.exit here - let the normal flow continue
+  });
+
+  process.on("SIGTERM", () => {
+    exitHandler();
+    // Don't call process.exit here - let the normal flow continue
+  });
+};
+
+// ============================================================================
+// QUEUE MANAGEMENT
+// ============================================================================
+
+interface QueuedLogEntry {
+  entry: LogEntry;
+  sequence: number;
+}
+
+interface LogQueue {
+  pending: QueuedLogEntry[];
+  sequenceCounter: number;
+  isProcessing: boolean;
+  drainResolvers: Array<() => void>;
+  droppedCount: number;
+}
+
+const DEFAULT_QUEUE_CONFIG: Required<QueueConfig> = {
+  maxSize: 10000,
+  maxBytes: 10 * 1024 * 1024, // 10MB
+  overflowBehavior: 'drop-oldest',
+  onBackpressure: () => {},
+  fallbackInterval: 100,
+  batchSize: 100,
+};
+
+// ============================================================================
+// HELPERS
+// ============================================================================
 
 /**
  * Default error handler that logs transport errors to console.
@@ -56,7 +132,6 @@ const shouldLog = (level: LogLevel, minLevel: LogLevel): boolean => {
 
 /**
  * Serialize an Error object to a plain object for JSON logging.
- * Extracts standard and common custom error properties for structured logging.
  */
 const serializeError = (error: Error): SerializedError => {
   const serialized: SerializedError = {
@@ -68,7 +143,6 @@ const serializeError = (error: Error): SerializedError => {
     serialized.stack = error.stack;
   }
 
-  // Extract common error properties
   const errorWithCode = error as Error & {
     code?: string | number;
     statusCode?: number;
@@ -80,14 +154,12 @@ const serializeError = (error: Error): SerializedError => {
     serialized.code = errorWithCode.code;
   }
 
-  // Support both statusCode and status (common in HTTP libraries)
   if (errorWithCode.statusCode !== undefined) {
     serialized.statusCode = errorWithCode.statusCode;
   } else if (errorWithCode.status !== undefined) {
     serialized.statusCode = errorWithCode.status;
   }
 
-  // Recursively serialize the cause chain (ES2022 Error.cause)
   if (errorWithCode.cause instanceof Error) {
     serialized.cause = serializeError(errorWithCode.cause);
   }
@@ -102,7 +174,6 @@ const createLogEntry = (
   message: string,
   context?: LogContext,
   error?: Error,
-  metadata?: Record<string, unknown>,
 ): LogEntry => {
   return {
     timestamp: new Date().toISOString(),
@@ -114,14 +185,13 @@ const createLogEntry = (
       ...context,
     },
     error: error ? serializeError(error) : undefined,
-    metadata,
   };
 };
 
-/**
- * Internal logger creation with full options.
- * Used by both createLogger and child().
- */
+// ============================================================================
+// INTERNAL LOGGER
+// ============================================================================
+
 interface InternalLoggerOptions {
   config: LoggerConfig;
   transports: Array<Transport | BatchedTransport>;
@@ -130,22 +200,137 @@ interface InternalLoggerOptions {
   logFilter: ReturnType<typeof createLogFilter>;
   baseContext: LogContext;
   useBatching: boolean;
+  queueConfig: Required<QueueConfig>;
 }
 
 const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
-  const { config, transports, onError, instanceId, logFilter, useBatching } =
+  const { config, transports, onError, instanceId, logFilter, useBatching, queueConfig } =
     options;
   let { baseContext } = options;
   let isShutdown = false;
-  let currentLevel = config.level ?? LogLevel.INFO;
+  let currentLevel = normalizeLogLevel(config.level ?? LogLevel.INFO);
 
-  const log = async (
+  // Queue state
+  const queue: LogQueue = {
+    pending: [],
+    sequenceCounter: 0,
+    isProcessing: false,
+    drainResolvers: [],
+    droppedCount: 0,
+  };
+
+  let processingScheduled = false;
+  let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Process queue
+  const processQueue = async (): Promise<void> => {
+    if (queue.isProcessing || queue.pending.length === 0) {
+      // Resolve any waiting drainers if queue is empty
+      if (queue.pending.length === 0) {
+        const resolvers = queue.drainResolvers.splice(0);
+        for (const resolve of resolvers) resolve();
+      }
+      return;
+    }
+
+    queue.isProcessing = true;
+
+    // Take a batch
+    const batch = queue.pending.splice(0, queueConfig.batchSize);
+
+    // Send to all transports
+    if (transports.length === 1) {
+      // Fast path for single transport
+      const transport = transports[0]!;
+      for (const { entry } of batch) {
+        try {
+          await transport.log(entry);
+        } catch (err) {
+          onError(err, (transport as { name?: string }).name || "transport-0");
+        }
+      }
+    } else {
+      // Multiple transports
+      await Promise.allSettled(
+        transports.map(async (transport, index) => {
+          for (const { entry } of batch) {
+            try {
+              await transport.log(entry);
+            } catch (err) {
+              const transportName =
+                (transport as { name?: string }).name || `transport-${index}`;
+              onError(err, transportName);
+            }
+          }
+        }),
+      );
+    }
+
+    queue.isProcessing = false;
+
+    // Continue if more pending
+    if (queue.pending.length > 0) {
+      scheduleProcessing();
+    } else {
+      // Resolve any waiting drainers
+      const resolvers = queue.drainResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+    }
+  };
+
+  const scheduleProcessing = (): void => {
+    if (processingScheduled) return;
+    processingScheduled = true;
+
+    queueMicrotask(() => {
+      processingScheduled = false;
+      processQueue().catch((err) => onError(err, "queue-processor"));
+    });
+  };
+
+  const startFallbackTimer = (): void => {
+    if (fallbackTimer) return;
+    fallbackTimer = setInterval(() => {
+      if (queue.pending.length > 0 && !queue.isProcessing) {
+        processQueue().catch((err) => onError(err, "queue-processor"));
+      }
+    }, queueConfig.fallbackInterval);
+  };
+
+  const enqueue = (entry: LogEntry): void => {
+    // Start fallback timer lazily
+    startFallbackTimer();
+
+    const queuedEntry: QueuedLogEntry = {
+      entry,
+      sequence: ++queue.sequenceCounter,
+    };
+
+    // Check backpressure
+    if (queue.pending.length >= queueConfig.maxSize) {
+      if (queueConfig.overflowBehavior === 'drop-oldest') {
+        queue.pending.shift();
+        queue.droppedCount++;
+      } else if (queueConfig.overflowBehavior === 'drop-newest') {
+        queue.droppedCount++;
+        return;
+      }
+      // 'warn' behavior: add anyway
+      queueConfig.onBackpressure({
+        queueSize: queue.pending.length,
+        droppedCount: queue.droppedCount,
+      });
+    }
+
+    queue.pending.push(queuedEntry);
+    scheduleProcessing();
+  };
+
+  const log = (
     level: LogLevel,
     message: string,
-    context?: LogContext,
-    error?: Error,
-    metadata?: Record<string, unknown>,
-  ): Promise<void> => {
+    data?: LogData,
+  ): void => {
     if (isShutdown) return;
     if (!shouldLog(level, currentLevel)) return;
 
@@ -154,12 +339,15 @@ const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
       if (!logFilter.shouldLog()) return;
     }
 
+    // Extract error from data if present
+    const { err, ...contextData } = data || {};
+
     // Merge contexts: AsyncLocalStorage -> baseContext -> call context
     const asyncContext = getContext();
     const mergedContext: LogContext = {
       ...asyncContext,
       ...baseContext,
-      ...context,
+      ...contextData,
       instanceId,
     };
 
@@ -170,8 +358,7 @@ const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
       level,
       message,
       mergedContext,
-      error,
-      metadata,
+      err,
     );
 
     // Apply redaction if configured
@@ -190,13 +377,14 @@ const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
       }
     }
 
-    // Execute hooks if configured
+    // Execute hooks synchronously (fire-and-forget for async hooks)
     if (Array.isArray(config.hooks)) {
       for (const hook of config.hooks) {
         try {
           const result = hook(processedEntry);
+          // Don't await - fire and forget for async hooks
           if (result && typeof result.then === "function") {
-            await result;
+            result.catch((err: unknown) => onError(err, "hook"));
           }
         } catch (hookError) {
           onError(hookError, "hook");
@@ -204,90 +392,73 @@ const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
       }
     }
 
-    // Send to all transports
-    const results = await Promise.allSettled(
-      transports.map(async (transport, index) => {
-        try {
-          await transport.log(processedEntry);
-        } catch (err: unknown) {
-          const transportName =
-            (transport as { name?: string }).name || `transport-${index}`;
-          throw { error: err, transportName };
+    // Enqueue for async processing
+    enqueue(processedEntry);
+  };
+
+  const flush = async (): Promise<void> => {
+    // Process any remaining queue
+    while (queue.pending.length > 0 || queue.isProcessing) {
+      if (queue.pending.length > 0 && !queue.isProcessing) {
+        await processQueue();
+      } else if (queue.isProcessing) {
+        // Wait for current processing to complete
+        await new Promise<void>((resolve) => {
+          queue.drainResolvers.push(resolve);
+        });
+      }
+    }
+
+    // Flush transports
+    await Promise.allSettled(
+      transports.map((transport) => transport.flush?.() || Promise.resolve()),
+    );
+  };
+
+  const shutdown = async (): Promise<void> => {
+    if (isShutdown) return;
+    isShutdown = true;
+
+    // Stop fallback timer
+    if (fallbackTimer) {
+      clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    }
+
+    // Flush queue and transports
+    await flush();
+
+    // Close transports
+    await Promise.allSettled(
+      transports.map(async (transport) => {
+        if ("close" in transport && typeof transport.close === "function") {
+          await (transport as BatchedTransport).close();
         }
       }),
     );
-
-    for (const result of results) {
-      if (result.status === "rejected") {
-        const { error: err, transportName } = result.reason as {
-          error: unknown;
-          transportName: string;
-        };
-        onError(err, transportName);
-      }
-    }
   };
 
+  // Track this logger for global exit handling
+  registerLoggerForExit(shutdown);
+
   const logger: Logger = {
-    debug: (message, context?, metadata?) =>
-      log(LogLevel.DEBUG, message, context, undefined, metadata),
-    info: (message, context?, metadata?) =>
-      log(LogLevel.INFO, message, context, undefined, metadata),
-    warn: (message, context?, error?, metadata?) =>
-      log(LogLevel.WARN, message, context, error, metadata),
-    error: (message, context?, error?, metadata?) =>
-      log(LogLevel.ERROR, message, context, error, metadata),
-    fatal: (message, context?, error?, metadata?) =>
-      log(LogLevel.FATAL, message, context, error, metadata),
-
-    logFunctionStart: (functionName, context?, metadata?) =>
-      log(
-        LogLevel.INFO,
-        `Function ${functionName} started`,
-        { ...context, functionName },
-        undefined,
-        metadata,
-      ),
-
-    logFunctionEnd: (functionName, duration, context?, metadata?) =>
-      log(
-        LogLevel.INFO,
-        `Function ${functionName} completed in ${duration}ms`,
-        { ...context, functionName, duration },
-        undefined,
-        metadata,
-      ),
-
-    logDatabaseOperation: (operation, table, context?, metadata?) =>
-      log(
-        LogLevel.DEBUG,
-        `Database operation: ${operation} on table ${table}`,
-        { ...context, operation, table },
-        undefined,
-        metadata,
-      ),
-
-    logApiRequest: (method, path, statusCode, context?, metadata?) =>
-      log(
-        LogLevel.INFO,
-        `API ${method} ${path} - ${statusCode}`,
-        { ...context, method, path, statusCode },
-        undefined,
-        metadata,
-      ),
+    debug: (message, data?) => log(LogLevel.DEBUG, message, data),
+    info: (message, data?) => log(LogLevel.INFO, message, data),
+    warn: (message, data?) => log(LogLevel.WARN, message, data),
+    error: (message, data?) => log(LogLevel.ERROR, message, data),
+    fatal: (message, data?) => log(LogLevel.FATAL, message, data),
 
     child: (childContext: LogContext): Logger => {
-      // Create a new logger with merged context
       return createLoggerInternal({
         ...options,
         baseContext: { ...baseContext, ...childContext },
       });
     },
 
-    setLevel: (level: LogLevel): void => {
-      currentLevel = level;
+    setLevel: (level: LogLevelInput): void => {
+      currentLevel = normalizeLogLevel(level);
       for (const t of transports) {
-        t.setLevel(level);
+        t.setLevel(currentLevel);
       }
     },
 
@@ -316,29 +487,11 @@ const createLoggerInternal = (options: InternalLoggerOptions): Logger => {
 
     getSamplingStats: () => logFilter.getStats(),
 
-    flush: async (): Promise<void> => {
-      await Promise.allSettled(
-        transports.map((transport) => transport.flush?.() || Promise.resolve()),
-      );
-    },
+    flush,
 
     getBatchStats: () => transports.map((t) => t.getStats?.() || {}),
 
-    shutdown: async (): Promise<void> => {
-      if (isShutdown) return;
-      isShutdown = true;
-
-      await Promise.allSettled(
-        transports.map(async (transport) => {
-          if (transport.flush) {
-            await transport.flush();
-          }
-          if ("close" in transport && typeof transport.close === "function") {
-            await (transport as BatchedTransport).close();
-          }
-        }),
-      );
-    },
+    shutdown,
   };
 
   return logger;
@@ -367,7 +520,7 @@ export interface CreateLoggerOptions {
  * @example
  * ```typescript
  * const log = createLogger({
- *   config: { serviceName: 'my-service', level: LogLevel.DEBUG },
+ *   config: { serviceName: 'my-service', level: 'debug' },
  *   transports: [createConsoleTransport({ formatter: createJsonFormatter() })],
  * });
  * ```
@@ -380,15 +533,18 @@ export const createLogger = (options: CreateLoggerOptions = {}): Logger => {
     level: options.config?.level ?? getLogLevelFromEnv(env),
     serviceName: options.config?.serviceName || env.SERVICE_NAME,
     stage: options.config?.stage || env.STAGE || "dev",
-    enableStructuredLogging: env.ENABLE_STRUCTURED_LOGGING ?? true,
     instanceId,
     ...options.config,
   };
 
   // Normalize level if string
-  if (typeof config.level === "string") {
-    config.level = parseLogLevel(config.level as string) ?? LogLevel.INFO;
-  }
+  const normalizedLevel = normalizeLogLevel(config.level ?? LogLevel.INFO);
+  config.level = normalizedLevel;
+
+  const queueConfig: Required<QueueConfig> = {
+    ...DEFAULT_QUEUE_CONFIG,
+    ...config.queue,
+  };
 
   const useBatching = options.config?.batching === true;
   const transports: Array<Transport | BatchedTransport> = useBatching
@@ -405,9 +561,8 @@ export const createLogger = (options: CreateLoggerOptions = {}): Logger => {
   if (transports.length === 0) {
     const isProd = config.stage === "prod" || config.stage === "production";
     const formatter = isProd ? createJsonFormatter() : createPrettyFormatter();
-    const transportLevel = config.level ?? LogLevel.INFO;
     transports.push(
-      createConsoleTransport({ formatter, level: transportLevel }),
+      createConsoleTransport({ formatter, level: normalizedLevel }),
     );
   }
 
@@ -419,6 +574,7 @@ export const createLogger = (options: CreateLoggerOptions = {}): Logger => {
     logFilter: createLogFilter(config),
     baseContext: {},
     useBatching,
+    queueConfig,
   });
 };
 
@@ -438,7 +594,7 @@ export const createLogger = (options: CreateLoggerOptions = {}): Logger => {
  * // With options
  * const log = logger({
  *   serviceName: 'api-server',
- *   level: LogLevel.DEBUG,
+ *   level: 'debug',  // or LogLevel.DEBUG
  *   pretty: true,
  * });
  * ```
@@ -449,15 +605,73 @@ export const logger = (options: SimpleLoggerOptions = {}): Logger => {
   const usePretty = options.pretty ?? !isProd;
 
   const formatter = usePretty ? createPrettyFormatter() : createJsonFormatter();
-  const level = options.level ?? (isProd ? LogLevel.INFO : LogLevel.DEBUG);
+  const jsonFormatter = createJsonFormatter();
+  const level = normalizeLogLevel(options.level ?? (isProd ? LogLevel.INFO : LogLevel.DEBUG));
+  const serviceName = options.serviceName || env.SERVICE_NAME;
 
   const transports: Transport[] = [
     createConsoleTransport({ formatter, level }),
     ...(options.transports || []),
   ];
 
+  // Process shorthand transport configs
+  if (options.datadog) {
+    const ddOpts = options.datadog === true ? {} : options.datadog;
+    transports.push(createDataDogTransport({
+      formatter: jsonFormatter,
+      level,
+      ...(serviceName && { serviceName }),
+      ...ddOpts,
+    }));
+  }
+
+  if (options.cloudwatch) {
+    transports.push(createCloudWatchTransport({
+      formatter: jsonFormatter,
+      level,
+      ...options.cloudwatch,
+    }));
+  }
+
+  if (options.splunk) {
+    const splunkOpts = options.splunk === true ? {} : options.splunk;
+    transports.push(createSplunkTransport({
+      formatter: jsonFormatter,
+      level,
+      ...splunkOpts,
+    }));
+  }
+
+  if (options.elasticsearch) {
+    const esOpts = options.elasticsearch === true ? {} : options.elasticsearch;
+    transports.push(createElasticsearchTransport({
+      formatter: jsonFormatter,
+      level,
+      ...esOpts,
+    }));
+  }
+
+  if (options.newrelic) {
+    const nrOpts = options.newrelic === true ? {} : options.newrelic;
+    transports.push(createNewRelicTransport({
+      formatter: jsonFormatter,
+      level,
+      ...(serviceName && { serviceName }),
+      ...nrOpts,
+    }));
+  }
+
+  if (options.file) {
+    const fileOpts = options.file === true ? {} : options.file;
+    transports.push(createFileTransport({
+      formatter: jsonFormatter,
+      level,
+      ...fileOpts,
+    }));
+  }
+
   const config: LoggerConfig = {
-    serviceName: options.serviceName || env.SERVICE_NAME,
+    serviceName,
     stage: options.stage || env.STAGE || "dev",
     level,
   };
@@ -473,12 +687,26 @@ export const logger = (options: SimpleLoggerOptions = {}): Logger => {
 };
 
 // ============================================================================
-// DEFAULT INSTANCE
+// DEFAULT INSTANCE (Lazy Initialization)
 // ============================================================================
+
+let _defaultLogger: Logger | null = null;
+
+/**
+ * Get the default logger instance, creating it lazily on first access.
+ * Uses pretty printing in development, JSON in production.
+ */
+const getDefaultLogger = (): Logger => {
+  if (!_defaultLogger) {
+    _defaultLogger = logger();
+  }
+  return _defaultLogger;
+};
 
 /**
  * Default logger instance with sensible defaults.
  * Uses pretty printing in development, JSON in production.
+ * Lazily initialized on first use.
  *
  * @example
  * ```typescript
@@ -488,7 +716,11 @@ export const logger = (options: SimpleLoggerOptions = {}): Logger => {
  * strogger.info('User logged in', { userId: '123' });
  * ```
  */
-export const strogger = logger();
+export const strogger: Logger = new Proxy({} as Logger, {
+  get(_target, prop: keyof Logger) {
+    return getDefaultLogger()[prop];
+  },
+});
 
 // ============================================================================
 // UTILITIES

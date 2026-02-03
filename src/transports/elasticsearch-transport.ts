@@ -149,9 +149,14 @@ export const createElasticsearchTransport = (
             .slice(0, 3); // Show first 3 errors
 
           if (errors?.length > 0) {
-            console.warn(
-              "[ELASTICSEARCH] Some documents failed to index:",
-              errors,
+            // Errors are handled via handleTransportError, not console
+            handleTransportError(
+              createDetailedError("ELASTICSEARCH_PARTIAL_ERROR", transportName, {
+                message: "Some documents failed to index",
+                errors,
+              }),
+              transportName,
+              true,
             );
           }
         }
@@ -196,12 +201,14 @@ export const createElasticsearchTransport = (
       }, flushInterval);
     };
 
-    // Start the flush timer
-    startFlushTimer();
+    // Timer starts lazily on first log, not immediately
 
     return {
       log: async (entry: LogEntry) => {
         if (!shouldLog(entry.level, minLevel)) return;
+
+        // Start flush timer lazily on first log
+        startFlushTimer();
 
         batch.push(entry);
 

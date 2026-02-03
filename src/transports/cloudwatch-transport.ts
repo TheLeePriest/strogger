@@ -96,7 +96,18 @@ export const createCloudWatchTransport = (
 
     const getClient = async () => {
       if (!awsSdkModule) {
-        awsSdkModule = await import("@aws-sdk/client-cloudwatch-logs");
+        try {
+          awsSdkModule = await import("@aws-sdk/client-cloudwatch-logs");
+        } catch (importError) {
+          throw createDetailedError("CLOUDWATCH_SDK_NOT_FOUND", transportName, {
+            message:
+              "AWS SDK not installed. Install it with: npm install @aws-sdk/client-cloudwatch-logs",
+            originalError:
+              importError instanceof Error
+                ? importError.message
+                : String(importError),
+          });
+        }
       }
       if (!cloudWatchClient) {
         cloudWatchClient = new awsSdkModule.CloudWatchLogsClient({
@@ -233,10 +244,6 @@ export const createCloudWatchTransport = (
         state.currentStreamSize = 0;
         state.streamStartTime = Date.now();
         state.sequenceToken = undefined;
-
-        console.log(
-          `[CLOUDWATCH] Rotated to stream: ${state.currentStreamName}`,
-        );
       } catch (error) {
         handleTransportError(error, transportName, true);
       }
@@ -261,12 +268,14 @@ export const createCloudWatchTransport = (
       }, flushInterval);
     };
 
-    // Start the flush timer
-    startFlushTimer();
+    // Timer starts lazily on first log, not immediately
 
     return {
       log: async (entry: LogEntry) => {
         if (!shouldLog(entry.level, minLevel)) return;
+
+        // Start flush timer lazily on first log
+        startFlushTimer();
 
         // Check if stream rotation is needed
         if (shouldRotateStream()) {
