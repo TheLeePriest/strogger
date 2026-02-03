@@ -1,6 +1,6 @@
 {
   "name": "strogger",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "A structured logging library for Node.js that makes request tracing easy",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
