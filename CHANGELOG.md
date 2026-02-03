@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.0.1] - 2025-02-03
+## [4.0.2] - 2025-02-03
 
 ### Fixed
 
-- Fix GitHub Actions OIDC publishing by removing registry-url from setup-node
+- Fix GitHub Actions OIDC publishing (requires npm 11.5.1+, provenance is automatic)
 
 ## [4.0.0] - 2025-02-02
 
